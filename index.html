@@ -774,7 +774,7 @@ select:hover { border-color: var(--highlight); }
 //  App State
 // ════════════════════════════════════════════════════════
 const state = {
-  model: 'live',
+  model: 'structured',
   mode: 'stress',
   data: {},
   objects: { meshSurface: null, stress: null, paths: null, topo: null, gcode: null, directions: null },
@@ -899,7 +899,7 @@ async function loadModelData(model) {
   return state.data[model];
 }
 
-async function loadLiveData() {
+async function loadModelData(model) {
   // Cache-bust: add timestamp to prevent browser caching stale data
   const t = Date.now();
   const [stress, paths, topo, gcode, mesh] = await Promise.all([
@@ -1461,7 +1461,7 @@ async function runCompute() {
     updateResult('gcode-fiber', Math.round(gcRes.fiber_mm) + ' mm');
 
     // Load results into viewer
-    await loadLiveData();
+    await loadModelData('structured');
     autoCenterCamera();
     updateScene();
 
@@ -1627,7 +1627,7 @@ async function init() {
   try {
     onResize();
     // Try live data first, fall back to precomputed
-    const liveData = await loadModelData('live');
+    const liveData = await loadModelData('structured');
     if (!liveData || (!liveData.stress && !liveData.paths)) {
       state.model = 'structured';
       await loadModelData('structured');
