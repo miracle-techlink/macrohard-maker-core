@@ -1,0 +1,1649 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CF-Path-Planner | Continuous Fiber Path Planning</title>
+<script src="lib/three.min.js"></script>
+<script src="lib/OrbitControls.js"></script>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+:root {
+  --bg: #1a1a2e;
+  --panel: #16213e;
+  --accent: #0f3460;
+  --accent-light: #1a5276;
+  --highlight: #4fc3f7;
+  --text: #e0e0e0;
+  --text-dim: #8899aa;
+  --success: #66bb6a;
+  --danger: #ef5350;
+  --orange: #ff9800;
+}
+body {
+  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  overflow: hidden;
+  height: 100vh;
+}
+#app {
+  display: grid;
+  grid-template-rows: 48px 1fr 32px;
+  grid-template-columns: 260px 1fr 220px;
+  height: 100vh;
+}
+
+/* ── Header ── */
+#header {
+  grid-column: 1 / -1;
+  background: var(--panel);
+  display: flex;
+  align-items: center;
+  padding: 0 16px;
+  gap: 12px;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+  z-index: 10;
+}
+#header h1 {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--highlight);
+  white-space: nowrap;
+}
+#header h1 span {
+  color: var(--text-dim);
+  font-weight: 400;
+  font-size: 12px;
+  margin-left: 8px;
+}
+#header .spacer { flex: 1; }
+.btn {
+  background: var(--accent);
+  color: var(--text);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 6px;
+  padding: 5px 12px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+  font-family: inherit;
+}
+.btn:hover { background: var(--accent-light); border-color: var(--highlight); }
+
+/* ── Left Panel ── */
+#left-panel {
+  background: var(--panel);
+  border-right: 1px solid rgba(255,255,255,0.06);
+  padding: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  font-size: 12px;
+}
+#left-panel::-webkit-scrollbar { width: 4px; }
+#left-panel::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 2px; }
+
+.section {
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+}
+.section-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 14px;
+  cursor: pointer;
+  user-select: none;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: var(--text-dim);
+  font-weight: 600;
+  transition: color 0.15s;
+}
+.section-header:hover { color: var(--highlight); }
+.section-header .arrow {
+  display: inline-block;
+  transition: transform 0.2s;
+  font-size: 9px;
+}
+.section-header.collapsed .arrow { transform: rotate(-90deg); }
+.section-body {
+  padding: 0 14px 10px;
+  overflow: hidden;
+  transition: max-height 0.25s ease, padding 0.25s ease;
+  max-height: 600px;
+}
+.section-body.collapsed {
+  max-height: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
+/* Radio & checkbox groups */
+.radio-group, .check-group {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.radio-item, .check-item {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.radio-item:hover, .check-item:hover { background: rgba(79,195,247,0.06); }
+.radio-item input, .check-item input { accent-color: var(--highlight); cursor: pointer; }
+.radio-item .label-main { font-size: 12px; }
+.radio-item .label-sub { font-size: 10px; color: var(--text-dim); }
+
+/* Sliders */
+.slider-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 0;
+}
+.slider-row label {
+  width: 80px;
+  font-size: 11px;
+  color: var(--text-dim);
+  flex-shrink: 0;
+}
+.slider-row input[type=range] {
+  flex: 1;
+  -webkit-appearance: none;
+  height: 4px;
+  background: rgba(255,255,255,0.1);
+  border-radius: 2px;
+  outline: none;
+}
+.slider-row input[type=range]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 12px;
+  height: 12px;
+  background: var(--highlight);
+  border-radius: 50%;
+  cursor: pointer;
+}
+.slider-row .slider-val {
+  width: 38px;
+  text-align: right;
+  font-size: 11px;
+  color: var(--highlight);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Param groups */
+.param-group { display: none; }
+.param-group.visible { display: block; }
+
+/* STL upload */
+#stl-upload-area { display: none; padding: 4px 0; }
+#stl-upload-area.visible { display: block; }
+.stl-browse-btn {
+  background: var(--accent);
+  color: var(--text);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 4px;
+  padding: 4px 10px;
+  font-size: 11px;
+  cursor: pointer;
+}
+.stl-browse-btn:hover { border-color: var(--highlight); }
+#stl-filename {
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-left: 6px;
+}
+
+/* Compute button */
+#btn-compute {
+  display: block;
+  width: 100%;
+  padding: 10px 0;
+  margin: 6px 0 4px;
+  background: linear-gradient(135deg, var(--orange) 0%, #f57c00 100%);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 700;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  letter-spacing: 0.5px;
+  transition: opacity 0.2s, filter 0.2s;
+  font-family: inherit;
+}
+#btn-compute:hover { filter: brightness(1.1); }
+#btn-compute:disabled { opacity: 0.5; cursor: not-allowed; filter: none; }
+#progress-bar-outer {
+  width: 100%;
+  height: 5px;
+  background: rgba(255,255,255,0.06);
+  border-radius: 3px;
+  margin: 6px 0 2px;
+  overflow: hidden;
+}
+#progress-bar-inner {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, var(--highlight), var(--success));
+  border-radius: 3px;
+  transition: width 0.4s ease;
+}
+#compute-status-text {
+  font-size: 11px;
+  color: var(--text-dim);
+  min-height: 16px;
+  line-height: 16px;
+}
+
+/* View mode buttons */
+.view-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 10px;
+  background: transparent;
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 7px;
+  color: var(--text);
+  cursor: pointer;
+  font-size: 12px;
+  text-align: left;
+  transition: all 0.15s;
+  font-family: inherit;
+}
+.view-btn:hover { background: rgba(79,195,247,0.08); border-color: rgba(79,195,247,0.2); }
+.view-btn.active { background: rgba(79,195,247,0.15); border-color: var(--highlight); color: var(--highlight); }
+.view-btn .icon { font-size: 14px; width: 18px; text-align: center; }
+.view-btn .label-zh { font-size: 10px; color: var(--text-dim); }
+
+/* ── 3D Viewport ── */
+#viewport {
+  position: relative;
+  overflow: hidden;
+  background: var(--bg);
+}
+#three-canvas { width: 100%; height: 100%; display: block; }
+#loading-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(26,26,46,0.92);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  z-index: 20;
+  transition: opacity 0.4s;
+}
+#loading-overlay.hidden { opacity: 0; pointer-events: none; }
+.spinner {
+  width: 36px;
+  height: 36px;
+  border: 3px solid rgba(79,195,247,0.2);
+  border-top-color: var(--highlight);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+#loading-text { margin-top: 10px; color: var(--text-dim); font-size: 13px; }
+#no-data-msg {
+  position: absolute;
+  inset: 0;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-dim);
+  font-size: 15px;
+  z-index: 5;
+}
+
+/* Color bar */
+#colorbar {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  width: 24px;
+  height: 180px;
+  border-radius: 4px;
+  overflow: hidden;
+  border: 1px solid rgba(255,255,255,0.1);
+  z-index: 5;
+  display: none;
+}
+#colorbar canvas { width: 100%; height: 100%; }
+#colorbar-max, #colorbar-min {
+  position: absolute;
+  right: 30px;
+  font-size: 10px;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+#colorbar-max { top: -2px; }
+#colorbar-min { bottom: -2px; }
+#colorbar-label {
+  position: absolute;
+  right: 30px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 10px;
+  color: var(--text-dim);
+}
+
+/* G-code controls overlay */
+#gcode-controls {
+  position: absolute;
+  bottom: 12px;
+  left: 12px;
+  display: none;
+  align-items: center;
+  gap: 8px;
+  background: rgba(22,33,62,0.9);
+  padding: 6px 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(255,255,255,0.06);
+  z-index: 5;
+}
+#gcode-controls .btn { padding: 3px 8px; font-size: 12px; }
+#gcode-controls input[type=range] {
+  -webkit-appearance: none;
+  height: 4px;
+  background: rgba(255,255,255,0.1);
+  border-radius: 2px;
+  outline: none;
+}
+#gcode-controls input[type=range]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 12px;
+  height: 12px;
+  background: var(--highlight);
+  border-radius: 50%;
+  cursor: pointer;
+}
+#gcode-progress { width: 140px; }
+.ctrl-label { font-size: 11px; color: var(--text-dim); white-space: nowrap; }
+
+/* ── Right Panel ── */
+#right-panel {
+  background: var(--panel);
+  border-left: 1px solid rgba(255,255,255,0.06);
+  padding: 12px;
+  overflow-y: auto;
+  font-size: 12px;
+}
+#right-panel::-webkit-scrollbar { width: 4px; }
+#right-panel::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 2px; }
+
+.rp-section-title {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: var(--text-dim);
+  font-weight: 600;
+  margin: 12px 0 6px;
+}
+.rp-section-title:first-child { margin-top: 0; }
+.info-card {
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 8px;
+  padding: 10px;
+  margin-bottom: 8px;
+}
+.info-card h3 {
+  font-size: 12px;
+  color: var(--highlight);
+  margin-bottom: 6px;
+  font-weight: 600;
+}
+.info-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 3px 0;
+}
+.info-label { color: var(--text-dim); font-size: 11px; }
+.info-value {
+  color: var(--text);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
+}
+.download-btn {
+  display: block;
+  width: 100%;
+  padding: 8px 0;
+  background: var(--accent);
+  color: var(--text);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 6px;
+  font-size: 12px;
+  cursor: pointer;
+  text-align: center;
+  transition: all 0.15s;
+  font-family: inherit;
+  text-decoration: none;
+}
+.download-btn:hover { border-color: var(--highlight); background: var(--accent-light); }
+
+/* ── Bottom Bar ── */
+#bottom-bar {
+  grid-column: 1 / -1;
+  background: var(--panel);
+  border-top: 1px solid rgba(255,255,255,0.06);
+  display: flex;
+  align-items: center;
+  padding: 0 16px;
+  gap: 12px;
+  font-size: 12px;
+}
+#bottom-status { color: var(--text-dim); font-size: 11px; }
+#bottom-bar .spacer { flex: 1; }
+
+/* Select */
+select {
+  background: var(--accent);
+  color: var(--text);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 4px;
+  padding: 3px 8px;
+  font-size: 11px;
+  cursor: pointer;
+  outline: none;
+  font-family: inherit;
+}
+select:hover { border-color: var(--highlight); }
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- Header -->
+  <div id="header">
+    <h1>CF-Path-Planner <span>连续碳纤维路径规划</span></h1>
+    <div class="spacer"></div>
+    <button class="btn" id="btn-screenshot" title="Screenshot / 截图">Screenshot</button>
+  </div>
+
+  <!-- Left Panel -->
+  <div id="left-panel">
+
+    <!-- MODEL -->
+    <div class="section">
+      <div class="section-header" data-section="model">
+        <span class="arrow">&#9660;</span> MODEL 模型
+      </div>
+      <div class="section-body" id="sec-model">
+        <div class="radio-group">
+          <label class="radio-item">
+            <input type="radio" name="model" value="cylinder" checked>
+            <div><span class="label-main">Cylinder 圆柱</span></div>
+          </label>
+          <label class="radio-item">
+            <input type="radio" name="model" value="cone">
+            <div><span class="label-main">Cone 锥体</span></div>
+          </label>
+          <label class="radio-item">
+            <input type="radio" name="model" value="stl">
+            <div><span class="label-main">Upload STL 上传模型</span></div>
+          </label>
+        </div>
+        <div id="stl-upload-area">
+          <input type="file" id="stl-file" accept=".stl,.STL" style="display:none">
+          <button class="stl-browse-btn" onclick="document.getElementById('stl-file').click()">Browse / 浏览...</button>
+          <span id="stl-filename">No file selected</span>
+        </div>
+
+        <!-- Cylinder params -->
+        <div class="param-group visible" id="params-cylinder">
+          <div class="slider-row">
+            <label>R outer 外径</label>
+            <input type="range" id="r-outer" min="5" max="60" step="1" value="25">
+            <span class="slider-val" id="r-outer-val">25</span>
+          </div>
+          <div class="slider-row">
+            <label>R inner 内径</label>
+            <input type="range" id="r-inner" min="3" max="55" step="1" value="20">
+            <span class="slider-val" id="r-inner-val">20</span>
+          </div>
+          <div class="slider-row">
+            <label>Height 高度</label>
+            <input type="range" id="height" min="10" max="200" step="1" value="80">
+            <span class="slider-val" id="height-val">80</span>
+          </div>
+        </div>
+
+        <!-- Cone params -->
+        <div class="param-group" id="params-cone">
+          <div class="slider-row">
+            <label>R bottom 底径</label>
+            <input type="range" id="r-bottom" min="5" max="60" step="1" value="25">
+            <span class="slider-val" id="r-bottom-val">25</span>
+          </div>
+          <div class="slider-row">
+            <label>R top 顶径</label>
+            <input type="range" id="r-top" min="3" max="55" step="1" value="15">
+            <span class="slider-val" id="r-top-val">15</span>
+          </div>
+          <div class="slider-row">
+            <label>Height 高度</label>
+            <input type="range" id="cone-height" min="10" max="200" step="1" value="60">
+            <span class="slider-val" id="cone-height-val">60</span>
+          </div>
+          <div class="slider-row">
+            <label>Wall 壁厚</label>
+            <input type="range" id="wall" min="1" max="20" step="0.5" value="5">
+            <span class="slider-val" id="wall-val">5</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- PARAMETERS -->
+    <div class="section">
+      <div class="section-header" data-section="params">
+        <span class="arrow">&#9660;</span> PARAMETERS 参数
+      </div>
+      <div class="section-body" id="sec-params">
+        <div class="slider-row">
+          <label>E (GPa)</label>
+          <input type="range" id="e-gpa" min="1" max="200" step="1" value="60">
+          <span class="slider-val" id="e-gpa-val">60</span>
+        </div>
+        <div class="slider-row">
+          <label>Load P (N)</label>
+          <input type="range" id="load-p" min="100" max="5000" step="50" value="500">
+          <span class="slider-val" id="load-p-val">500</span>
+        </div>
+        <div class="slider-row">
+          <label>Mesh size</label>
+          <input type="range" id="mesh-size" min="1.0" max="5.0" step="0.1" value="2.5">
+          <span class="slider-val" id="mesh-size-val">2.5</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- STRATEGY -->
+    <div class="section">
+      <div class="section-header" data-section="strategy">
+        <span class="arrow">&#9660;</span> STRATEGY 策略
+      </div>
+      <div class="section-body" id="sec-strategy">
+        <div class="radio-group">
+          <label class="radio-item">
+            <input type="radio" name="strategy" value="multilayer_stress" checked>
+            <div>
+              <span class="label-main">Multi-layer Stress-driven</span>
+              <div class="label-sub">多壳层应力驱动</div>
+            </div>
+          </label>
+          <label class="radio-item">
+            <input type="radio" name="strategy" value="multilayer_default">
+            <div>
+              <span class="label-main">Multi-layer Default</span>
+              <div class="label-sub">多壳层默认</div>
+            </div>
+          </label>
+          <label class="radio-item">
+            <input type="radio" name="strategy" value="stress_driven">
+            <div>
+              <span class="label-main">Single-layer Stress-driven</span>
+              <div class="label-sub">单层应力驱动</div>
+            </div>
+          </label>
+          <label class="radio-item">
+            <input type="radio" name="strategy" value="multi_angle">
+            <div>
+              <span class="label-main">Single-layer Multi-angle</span>
+              <div class="label-sub">单层多角度</div>
+            </div>
+          </label>
+        </div>
+        <div class="slider-row" style="margin-top:6px;">
+          <label>Spacing 间距</label>
+          <input type="range" id="spacing" min="0.5" max="5.0" step="0.1" value="2.0">
+          <span class="slider-val" id="spacing-val">2.0</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- COMPUTE -->
+    <div class="section">
+      <div style="padding: 8px 14px 12px;">
+        <button id="btn-compute">&#9654; COMPUTE 计算</button>
+        <div id="progress-bar-outer"><div id="progress-bar-inner"></div></div>
+        <div id="compute-status-text">Ready</div>
+        <button id="btn-optimize" style="display:block;width:100%;padding:10px 0;margin:8px 0 4px;background:linear-gradient(135deg,#66bb6a,#43a047);color:#fff;font-size:14px;font-weight:700;border:none;border-radius:8px;cursor:pointer;letter-spacing:0.5px;transition:opacity 0.2s,filter 0.2s;font-family:inherit;">Optimize Layup / 铺层优化</button>
+        <div id="optimize-status" style="font-size:11px;color:var(--text-dim);min-height:16px;line-height:16px;white-space:pre-line;"></div>
+      </div>
+    </div>
+
+    <!-- VIEW -->
+    <div class="section">
+      <div class="section-header" data-section="view">
+        <span class="arrow">&#9660;</span> VIEW 视图
+      </div>
+      <div class="section-body" id="sec-view">
+        <div style="display:flex;flex-direction:column;gap:4px;">
+          <button class="view-btn active" data-mode="stress">
+            <span class="icon">&#9632;</span>
+            <div><div>Stress Field</div><div class="label-zh">Von Mises 应力场</div></div>
+          </button>
+          <button class="view-btn" data-mode="paths">
+            <span class="icon">&#9135;</span>
+            <div><div>Fiber Paths</div><div class="label-zh">纤维路径</div></div>
+          </button>
+          <button class="view-btn" data-mode="topo">
+            <span class="icon">&#9724;</span>
+            <div><div>Coverage Map</div><div class="label-zh">覆盖密度场</div></div>
+          </button>
+          <button class="view-btn" data-mode="gcode">
+            <span class="icon">&#9654;</span>
+            <div><div>G-code Replay</div><div class="label-zh">G代码回放</div></div>
+          </button>
+          <button class="view-btn" data-mode="all">
+            <span class="icon">&#9881;</span>
+            <div><div>Composite</div><div class="label-zh">综合视图</div></div>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- DISPLAY -->
+    <div class="section">
+      <div class="section-header" data-section="display">
+        <span class="arrow">&#9660;</span> DISPLAY 显示
+      </div>
+      <div class="section-body" id="sec-display">
+        <div class="check-group">
+          <label class="check-item">
+            <input type="checkbox" id="show-grid" checked>
+            Grid 网格
+          </label>
+          <label class="check-item">
+            <input type="checkbox" id="show-axes" checked>
+            Axes 坐标轴
+          </label>
+          <label class="check-item">
+            <input type="checkbox" id="show-directions">
+            Principal Dir 主应力方向
+          </label>
+        </div>
+        <div class="slider-row" style="margin-top:6px;">
+          <label>Opacity 透明</label>
+          <input type="range" id="opacity-slider" min="0.1" max="1" step="0.05" value="0.8">
+          <span class="slider-val" id="opacity-slider-val">0.8</span>
+        </div>
+        <div class="slider-row">
+          <label>Point size 点</label>
+          <input type="range" id="size-slider" min="0.5" max="8" step="0.5" value="2.5">
+          <span class="slider-val" id="size-slider-val">2.5</span>
+        </div>
+        <div class="slider-row">
+          <label>Colormap</label>
+          <select id="cmap-select" style="flex:1;">
+            <option value="jet">Jet</option>
+            <option value="viridis">Viridis</option>
+            <option value="coolwarm">Coolwarm</option>
+          </select>
+          <span class="slider-val"></span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 3D Viewport -->
+  <div id="viewport">
+    <canvas id="three-canvas"></canvas>
+    <div id="loading-overlay" class="hidden">
+      <div class="spinner"></div>
+      <div id="loading-text">Loading data...</div>
+    </div>
+    <div id="no-data-msg">No data available for this view</div>
+    <div id="colorbar">
+      <canvas id="colorbar-canvas" width="24" height="180"></canvas>
+      <div id="colorbar-max"></div>
+      <div id="colorbar-min"></div>
+      <div id="colorbar-label"></div>
+    </div>
+    <div id="gcode-controls">
+      <button class="btn" id="gcode-play"><span>&#9654;</span></button>
+      <span class="ctrl-label">Speed</span>
+      <input type="range" id="gcode-speed" min="1" max="200" step="1" value="50">
+      <input type="range" id="gcode-progress" min="0" max="1000" step="1" value="1000">
+      <span class="ctrl-label" id="gcode-pct">100%</span>
+    </div>
+  </div>
+
+  <!-- Right Panel -->
+  <div id="right-panel">
+    <div class="rp-section-title">RESULTS 结果</div>
+    <div class="info-card">
+      <div class="info-row"><span class="info-label">Elements 单元</span><span class="info-value" id="res-elements">--</span></div>
+      <div class="info-row"><span class="info-label">VM max 最大应力</span><span class="info-value" id="res-vm-max">--</span></div>
+      <div class="info-row"><span class="info-label">VM min 最小应力</span><span class="info-value" id="res-vm-min">--</span></div>
+      <div class="info-row"><span class="info-label">VM mean 平均应力</span><span class="info-value" id="res-vm-mean">--</span></div>
+    </div>
+    <div class="info-card">
+      <div class="info-row"><span class="info-label">Paths 路径数</span><span class="info-value" id="res-paths">--</span></div>
+      <div class="info-row"><span class="info-label">Fiber 纤维总长</span><span class="info-value" id="res-fiber">--</span></div>
+      <div class="info-row"><span class="info-label">Vf 纤维体积分数</span><span class="info-value" id="res-vf">--</span></div>
+      <div class="info-row"><span class="info-label">Coverage 覆盖率</span><span class="info-value" id="res-coverage">--</span></div>
+      <div class="info-row"><span class="info-label">Balance 平衡度</span><span class="info-value" id="res-balance">--</span></div>
+      <div class="info-row"><span class="info-label" id="res-layer-cov-label">Layer Cov</span><span class="info-value" id="res-layer-cov" style="font-size:10px;">--</span></div>
+    </div>
+    <div class="info-card">
+      <h3 style="font-size:12px;color:var(--highlight);margin-bottom:6px;font-weight:600;">OPTIMIZER 优化</h3>
+      <div class="info-row"><span class="info-label">Opt Layup 最优铺层</span><span class="info-value" id="res-opt-layup">--</span></div>
+      <div class="info-row"><span class="info-label">Improvement 提升</span><span class="info-value" id="res-opt-improvement">--</span></div>
+    </div>
+
+    <div class="rp-section-title">DOWNLOAD 下载</div>
+    <a class="download-btn" href="data/output.gcode" download id="download-gcode-btn">&#8595; Download G-code</a>
+
+    <div class="rp-section-title">G-CODE INFO</div>
+    <div class="info-card">
+      <div class="info-row"><span class="info-label">Lines 行数</span><span class="info-value" id="res-gcode-lines">--</span></div>
+      <div class="info-row"><span class="info-label">Cuts 切断次数</span><span class="info-value" id="res-gcode-cuts">--</span></div>
+      <div class="info-row"><span class="info-label">Fiber 纤维长度</span><span class="info-value" id="res-gcode-fiber">--</span></div>
+      <div class="info-row"><span class="info-label">Print 打印段</span><span class="info-value" id="res-gcode-print">--</span></div>
+      <div class="info-row"><span class="info-label">Travel 空走段</span><span class="info-value" id="res-gcode-travel">--</span></div>
+    </div>
+
+    <div class="rp-section-title">TOPOLOGY 拓扑</div>
+    <div class="info-card">
+      <div class="info-row"><span class="info-label">Status 状态</span><span class="info-value" id="res-topo-status">--</span></div>
+      <div class="info-row"><span class="info-label">Elements 单元</span><span class="info-value" id="res-topo-elements">--</span></div>
+    </div>
+  </div>
+
+  <!-- Bottom Bar -->
+  <div id="bottom-bar">
+    <span id="bottom-status">Status: Ready</span>
+    <div class="spacer"></div>
+    <button class="btn" id="btn-reset">Reset View 重置视角</button>
+  </div>
+</div>
+
+<script>
+// ════════════════════════════════════════════════════════
+//  App State
+// ════════════════════════════════════════════════════════
+const state = {
+  model: 'live',
+  mode: 'stress',
+  data: {},
+  objects: { meshSurface: null, stress: null, paths: null, topo: null, gcode: null, directions: null },
+  gcodeAnim: { playing: false, frame: 0, speed: 50, total: 0 },
+};
+
+// ════════════════════════════════════════════════════════
+//  Three.js Setup
+// ════════════════════════════════════════════════════════
+const canvas = document.getElementById('three-canvas');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: true });
+renderer.setPixelRatio(window.devicePixelRatio);
+renderer.setClearColor(0x1a1a2e);
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 5000);
+camera.position.set(30, 25, 30);
+
+const controls = new THREE.OrbitControls(camera, canvas);
+controls.enableDamping = true;
+controls.dampingFactor = 0.08;
+controls.target.set(0, 0, 0);
+
+// Lights
+scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+dirLight.position.set(20, 30, 20);
+scene.add(dirLight);
+const dirLight2 = new THREE.DirectionalLight(0x4488ff, 0.3);
+dirLight2.position.set(-20, 10, -20);
+scene.add(dirLight2);
+
+// Grid & Axes
+const grid = new THREE.GridHelper(100, 50, 0x333355, 0x222244);
+scene.add(grid);
+const axes = new THREE.AxesHelper(8);
+scene.add(axes);
+
+// ════════════════════════════════════════════════════════
+//  Colormaps
+// ════════════════════════════════════════════════════════
+function jetColor(t) {
+  t = Math.max(0, Math.min(1, t));
+  let r, g, b;
+  if (t < 0.25) { r = 0; g = 4 * t; b = 1; }
+  else if (t < 0.5) { r = 0; g = 1; b = 1 - 4 * (t - 0.25); }
+  else if (t < 0.75) { r = 4 * (t - 0.5); g = 1; b = 0; }
+  else { r = 1; g = 1 - 4 * (t - 0.75); b = 0; }
+  return [r, g, b];
+}
+
+function viridisColor(t) {
+  t = Math.max(0, Math.min(1, t));
+  const r = Math.max(0, Math.min(1, -0.2 + 1.5 * t * t));
+  const g = Math.max(0, Math.min(1, 0.1 + 0.9 * Math.sin(Math.PI * t * 0.9)));
+  const b = Math.max(0, Math.min(1, 0.55 - 0.5 * t + 0.4 * Math.sin(Math.PI * t)));
+  return [r, g, b];
+}
+
+function coolwarmColor(t) {
+  t = Math.max(0, Math.min(1, t));
+  const r = Math.max(0, Math.min(1, 0.3 + 0.7 * t));
+  const g = Math.max(0, Math.min(1, 0.3 + 0.4 * Math.sin(Math.PI * t)));
+  const b = Math.max(0, Math.min(1, 0.9 - 0.7 * t));
+  return [r, g, b];
+}
+
+function getColormap(name) {
+  if (name === 'viridis') return viridisColor;
+  if (name === 'coolwarm') return coolwarmColor;
+  return jetColor;
+}
+
+function drawColorbar(cmapName, vmin, vmax, label) {
+  const bar = document.getElementById('colorbar');
+  const cvs = document.getElementById('colorbar-canvas');
+  const ctx = cvs.getContext('2d');
+  const cmap = getColormap(cmapName);
+  const h = cvs.height;
+  for (let y = 0; y < h; y++) {
+    const t = 1 - y / h;
+    const [r, g, b] = cmap(t);
+    ctx.fillStyle = `rgb(${r*255|0},${g*255|0},${b*255|0})`;
+    ctx.fillRect(0, y, cvs.width, 1);
+  }
+  document.getElementById('colorbar-max').textContent = vmax.toExponential(2);
+  document.getElementById('colorbar-min').textContent = vmin.toExponential(2);
+  document.getElementById('colorbar-label').textContent = label || '';
+  bar.style.display = 'block';
+}
+
+function hideColorbar() { document.getElementById('colorbar').style.display = 'none'; }
+
+// ════════════════════════════════════════════════════════
+//  Data Loading
+// ════════════════════════════════════════════════════════
+async function loadJSON(path) {
+  try {
+    const resp = await fetch(path);
+    if (!resp.ok) return null;
+    return await resp.json();
+  } catch (e) { console.error('Load error:', path, e); return null; }
+}
+
+async function loadModelData(model) {
+  showLoading(true);
+  try {
+    const prefix = `data/${model}`;
+    const [stress, paths, topo, gcode, mesh] = await Promise.all([
+      loadJSON(`${prefix}_stress.json`),
+      loadJSON(`${prefix}_paths.json`),
+      loadJSON(`${prefix}_topo.json`),
+      loadJSON(`${prefix}_gcode.json`),
+      loadJSON(`${prefix}_mesh.json`),
+    ]);
+    state.data[model] = { stress, paths, topo, gcode, mesh };
+    updateInfoPanel(model);
+  } catch (e) {
+    console.error('loadModelData error:', e);
+  }
+  showLoading(false);
+  return state.data[model];
+}
+
+async function loadLiveData() {
+  // Cache-bust: add timestamp to prevent browser caching stale data
+  const t = Date.now();
+  const [stress, paths, topo, gcode, mesh] = await Promise.all([
+    loadJSON(`data/live_stress.json?t=${t}`),
+    loadJSON(`data/live_paths.json?t=${t}`),
+    loadJSON(`data/live_topo.json?t=${t}`),
+    loadJSON(`data/live_gcode.json?t=${t}`),
+    loadJSON(`data/live_mesh.json?t=${t}`),
+  ]);
+  state.data['live'] = { stress, paths, topo, gcode, mesh };
+  state.model = 'live';
+  updateInfoPanel('live');
+}
+
+function showLoading(show) {
+  document.getElementById('loading-overlay').classList.toggle('hidden', !show);
+}
+
+// ════════════════════════════════════════════════════════
+//  Build 3D Objects
+// ════════════════════════════════════════════════════════
+function clearObjects() {
+  for (const key of Object.keys(state.objects)) {
+    if (state.objects[key]) {
+      scene.remove(state.objects[key]);
+      if (state.objects[key].geometry) state.objects[key].geometry.dispose();
+      if (state.objects[key].material) state.objects[key].material.dispose();
+      if (state.objects[key].children) {
+        state.objects[key].children.forEach(c => {
+          if (c.geometry) c.geometry.dispose();
+          if (c.material) c.material.dispose();
+        });
+      }
+      state.objects[key] = null;
+    }
+  }
+}
+
+function buildMeshSurface(meshData, opacity=0.15) {
+  if (!meshData || !meshData.vertices || !meshData.triangles) return null;
+
+  const verts = meshData.vertices;
+  const tris = meshData.triangles;
+
+  const geometry = new THREE.BufferGeometry();
+  const positions = new Float32Array(tris.length * 3 * 3);
+
+  for (let i = 0; i < tris.length; i++) {
+    for (let j = 0; j < 3; j++) {
+      const vi = tris[i][j];
+      const v = verts[vi];
+      positions[i*9 + j*3 + 0] = v[0];     // x
+      positions[i*9 + j*3 + 1] = v[2];     // swap y/z for Three.js
+      positions[i*9 + j*3 + 2] = v[1];
+    }
+  }
+
+  geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  geometry.computeVertexNormals();
+
+  const material = new THREE.MeshPhongMaterial({
+    color: 0x334455,
+    transparent: true,
+    opacity: opacity,
+    side: THREE.DoubleSide,
+    depthWrite: true,  // inner wall blocks hollow core view
+  });
+
+  return new THREE.Mesh(geometry, material);
+}
+
+function buildStressCloud(stressData, opacity, pointSize, cmapName) {
+  if (!stressData) return null;
+  const centroids = stressData.centroids;
+  const vm = stressData.von_mises;
+  const vmMin = stressData.vm_min;
+  const vmMax = stressData.vm_max;
+  const range = vmMax - vmMin || 1;
+  const cmap = getColormap(cmapName);
+
+  const n = centroids.length;
+  const positions = new Float32Array(n * 3);
+  const colors = new Float32Array(n * 3);
+
+  for (let i = 0; i < n; i++) {
+    positions[i * 3] = centroids[i][0];
+    positions[i * 3 + 1] = centroids[i][2]; // swap Y/Z for three.js
+    positions[i * 3 + 2] = centroids[i][1];
+    const t = (vm[i] - vmMin) / range;
+    const [r, g, b] = cmap(t);
+    colors[i * 3] = r;
+    colors[i * 3 + 1] = g;
+    colors[i * 3 + 2] = b;
+  }
+
+  const geom = new THREE.BufferGeometry();
+  geom.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  geom.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+
+  const mat = new THREE.PointsMaterial({
+    size: pointSize,
+    vertexColors: true,
+    transparent: true,
+    opacity: opacity,
+    sizeAttenuation: true,
+    depthWrite: false,
+  });
+
+  return new THREE.Points(geom, mat);
+}
+
+function buildDirectionArrows(stressData) {
+  if (!stressData || !stressData.sigma_1_dir) return null;
+  const group = new THREE.Group();
+  const centroids = stressData.centroids;
+  const dirs = stressData.sigma_1_dir;
+  const step = Math.max(1, Math.floor(centroids.length / 500));
+  const arrowLen = 0.8;
+
+  for (let i = 0; i < centroids.length; i += step) {
+    const origin = new THREE.Vector3(centroids[i][0], centroids[i][2], centroids[i][1]);
+    const dir = new THREE.Vector3(dirs[i][0], dirs[i][2], dirs[i][1]).normalize();
+    const positions = new Float32Array(6);
+    const half = arrowLen / 2;
+    positions[0] = origin.x - dir.x * half;
+    positions[1] = origin.y - dir.y * half;
+    positions[2] = origin.z - dir.z * half;
+    positions[3] = origin.x + dir.x * half;
+    positions[4] = origin.y + dir.y * half;
+    positions[5] = origin.z + dir.z * half;
+    const geom = new THREE.BufferGeometry();
+    geom.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    const line = new THREE.Line(geom, new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.4 }));
+    group.add(line);
+  }
+  return group;
+}
+
+function buildFiberPaths(pathData, cmapName) {
+  if (!pathData) return null;
+  const group = new THREE.Group();
+  const paths = pathData.paths;
+  const cmap = getColormap(cmapName);
+
+  let zMin = Infinity, zMax = -Infinity;
+  for (const p of paths) {
+    for (const pt of p) {
+      if (pt[2] < zMin) zMin = pt[2];
+      if (pt[2] > zMax) zMax = pt[2];
+    }
+  }
+  const zRange = zMax - zMin || 1;
+
+  for (let pi = 0; pi < paths.length; pi++) {
+    const p = paths[pi];
+    if (p.length < 2) continue;
+    const positions = new Float32Array(p.length * 3);
+    const colors = new Float32Array(p.length * 3);
+    for (let i = 0; i < p.length; i++) {
+      positions[i * 3] = p[i][0];
+      positions[i * 3 + 1] = p[i][2]; // swap Y/Z
+      positions[i * 3 + 2] = p[i][1];
+      const t = (p[i][2] - zMin) / zRange;
+      const [r, g, b] = cmap(t);
+      colors[i * 3] = r;
+      colors[i * 3 + 1] = g;
+      colors[i * 3 + 2] = b;
+    }
+    const geom = new THREE.BufferGeometry();
+    geom.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    geom.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+    const mat = new THREE.LineBasicMaterial({ vertexColors: true, linewidth: 1 });
+    group.add(new THREE.Line(geom, mat));
+  }
+  return group;
+}
+
+function buildTopoCloud(topoData, opacity, pointSize, cmapName) {
+  if (!topoData) return null;
+  const centroids = topoData.centroids;
+  const densities = topoData.densities;
+  const cmap = getColormap(cmapName);
+
+  const thresh = 0.05;
+  const indices = [];
+  for (let i = 0; i < densities.length; i++) {
+    if (densities[i] > thresh) indices.push(i);
+  }
+
+  const n = indices.length;
+  const positions = new Float32Array(n * 3);
+  const colors = new Float32Array(n * 3);
+  const sizes = new Float32Array(n);
+
+  for (let j = 0; j < n; j++) {
+    const i = indices[j];
+    positions[j * 3] = centroids[i][0];
+    positions[j * 3 + 1] = centroids[i][2];
+    positions[j * 3 + 2] = centroids[i][1];
+    const d = densities[i];
+    const [r, g, b] = cmap(d);
+    colors[j * 3] = r;
+    colors[j * 3 + 1] = g;
+    colors[j * 3 + 2] = b;
+    sizes[j] = pointSize * (0.3 + 0.7 * d);
+  }
+
+  const geom = new THREE.BufferGeometry();
+  geom.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  geom.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+
+  const mat = new THREE.ShaderMaterial({
+    uniforms: { opacity: { value: opacity } },
+    vertexShader: `
+      attribute float size;
+      varying vec3 vColor;
+      void main() {
+        vColor = color;
+        vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+        gl_PointSize = size * (300.0 / -mvPosition.z);
+        gl_Position = projectionMatrix * mvPosition;
+      }
+    `,
+    fragmentShader: `
+      uniform float opacity;
+      varying vec3 vColor;
+      void main() {
+        float d = length(gl_PointCoord - vec2(0.5));
+        if (d > 0.5) discard;
+        float alpha = opacity * smoothstep(0.5, 0.3, d);
+        gl_FragColor = vec4(vColor, alpha);
+      }
+    `,
+    transparent: true,
+    depthWrite: false,
+    vertexColors: true,
+  });
+
+  geom.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+  return new THREE.Points(geom, mat);
+}
+
+function buildGcodePaths(gcodeData, progressFrac) {
+  if (!gcodeData) return null;
+  const group = new THREE.Group();
+  const positions = gcodeData.positions;
+  const isPrint = gcodeData.is_print;
+  if (!positions || !isPrint) return null;
+  const total = positions.length;
+  const limit = Math.floor(total * progressFrac);
+
+  let printPositions = [];
+  let travelPositions = [];
+
+  for (let i = 1; i < limit; i++) {
+    const prev = positions[i - 1];
+    const cur = positions[i];
+    if (isPrint[i]) {
+      printPositions.push(prev[0], prev[2], prev[1], cur[0], cur[2], cur[1]);
+    } else {
+      travelPositions.push(prev[0], prev[2], prev[1], cur[0], cur[2], cur[1]);
+    }
+  }
+
+  if (printPositions.length > 0) {
+    const geom = new THREE.BufferGeometry();
+    geom.setAttribute('position', new THREE.BufferAttribute(new Float32Array(printPositions), 3));
+    const mat = new THREE.LineBasicMaterial({ color: 0xff4444, linewidth: 1 });
+    group.add(new THREE.LineSegments(geom, mat));
+  }
+
+  if (travelPositions.length > 0) {
+    const geom = new THREE.BufferGeometry();
+    geom.setAttribute('position', new THREE.BufferAttribute(new Float32Array(travelPositions), 3));
+    const mat = new THREE.LineBasicMaterial({ color: 0x666688, linewidth: 1, transparent: true, opacity: 0.3 });
+    group.add(new THREE.LineSegments(geom, mat));
+  }
+
+  // Print head indicator
+  if (limit > 0 && limit <= total) {
+    const p = positions[limit - 1];
+    const headGeom = new THREE.SphereGeometry(0.4, 12, 12);
+    const headMat = new THREE.MeshBasicMaterial({ color: 0x4fc3f7 });
+    const head = new THREE.Mesh(headGeom, headMat);
+    head.position.set(p[0], p[2], p[1]);
+    group.add(head);
+  }
+
+  return group;
+}
+
+// ════════════════════════════════════════════════════════
+//  Scene Update
+// ════════════════════════════════════════════════════════
+function updateScene() {
+  const model = state.model;
+  const data = state.data[model];
+  if (!data) return;
+
+  clearObjects();
+
+  const opacity = parseFloat(document.getElementById('opacity-slider').value);
+  const pointSize = parseFloat(document.getElementById('size-slider').value);
+  const cmapName = document.getElementById('cmap-select').value;
+  const mode = state.mode;
+  const noDataMsg = document.getElementById('no-data-msg');
+  noDataMsg.style.display = 'none';
+
+  const showDirs = document.getElementById('show-directions').checked;
+
+  // Always show mesh surface as semi-transparent background
+  if (data.mesh) {
+    state.objects.meshSurface = buildMeshSurface(data.mesh, 0.25);
+    if (state.objects.meshSurface) scene.add(state.objects.meshSurface);
+  }
+
+  if (mode === 'stress' || mode === 'all') {
+    if (data.stress) {
+      state.objects.stress = buildStressCloud(data.stress, mode === 'all' ? opacity * 0.4 : opacity, pointSize, cmapName);
+      if (state.objects.stress) scene.add(state.objects.stress);
+      drawColorbar(cmapName, data.stress.vm_min, data.stress.vm_max, 'Von Mises (Pa)');
+      if (showDirs) {
+        state.objects.directions = buildDirectionArrows(data.stress);
+        if (state.objects.directions) scene.add(state.objects.directions);
+      }
+    } else if (mode === 'stress') {
+      noDataMsg.style.display = 'flex';
+      hideColorbar();
+    }
+  }
+
+  if (mode === 'paths' || mode === 'all') {
+    if (data.paths) {
+      state.objects.paths = buildFiberPaths(data.paths, cmapName);
+      if (state.objects.paths) scene.add(state.objects.paths);
+      if (mode === 'paths') hideColorbar();
+    } else if (mode === 'paths') {
+      noDataMsg.style.display = 'flex';
+    }
+  }
+
+  if (mode === 'topo') {
+    if (data.topo) {
+      state.objects.topo = buildTopoCloud(data.topo, opacity, pointSize * 1.5, cmapName);
+      if (state.objects.topo) scene.add(state.objects.topo);
+      drawColorbar(cmapName, 0, 1, 'Density');
+    } else {
+      noDataMsg.style.display = 'flex';
+      noDataMsg.textContent = 'No topology data / 无拓扑优化数据';
+      hideColorbar();
+    }
+  }
+
+  if (mode === 'gcode') {
+    if (data.gcode) {
+      const frac = parseInt(document.getElementById('gcode-progress').value) / 1000;
+      state.objects.gcode = buildGcodePaths(data.gcode, frac);
+      if (state.objects.gcode) scene.add(state.objects.gcode);
+      hideColorbar();
+      document.getElementById('gcode-controls').style.display = 'flex';
+      state.gcodeAnim.total = data.gcode.positions ? data.gcode.positions.length : 0;
+    } else {
+      noDataMsg.style.display = 'flex';
+      noDataMsg.textContent = 'No G-code data / 无G代码数据';
+      hideColorbar();
+    }
+  }
+
+  if (mode !== 'gcode') {
+    document.getElementById('gcode-controls').style.display = 'none';
+    state.gcodeAnim.playing = false;
+    document.getElementById('gcode-play').innerHTML = '<span>&#9654;</span>';
+  }
+
+  if (mode !== 'stress' && mode !== 'all' && mode !== 'topo') {
+    hideColorbar();
+  }
+}
+
+function autoCenterCamera() {
+  const data = state.data[state.model];
+  if (!data) return;
+  // Try stress centroids first, then paths
+  let c = null;
+  if (data.stress) c = data.stress.centroids;
+  else if (data.paths && data.paths.paths && data.paths.paths.length > 0) {
+    c = [];
+    for (const p of data.paths.paths) for (const pt of p) c.push(pt);
+  }
+  if (!c || c.length === 0) return;
+
+  let cx = 0, cy = 0, cz = 0;
+  for (const p of c) { cx += p[0]; cy += p[2]; cz += p[1]; }
+  const n = c.length;
+  cx /= n; cy /= n; cz /= n;
+
+  let maxDist = 0;
+  for (const p of c) {
+    const d = Math.sqrt((p[0]-cx)**2 + (p[2]-cy)**2 + (p[1]-cz)**2);
+    if (d > maxDist) maxDist = d;
+  }
+  const dist = maxDist * 2;
+  controls.target.set(cx, cy, cz);
+  camera.position.set(cx + dist * 0.7, cy + dist * 0.5, cz + dist * 0.7);
+  controls.update();
+}
+
+// ════════════════════════════════════════════════════════
+//  Info Panel
+// ════════════════════════════════════════════════════════
+function updateInfoPanel(model) {
+  const data = state.data[model];
+  if (!data) return;
+
+  if (data.stress) {
+    document.getElementById('res-elements').textContent = data.stress.centroids.length.toLocaleString();
+    document.getElementById('res-vm-max').textContent = data.stress.vm_max.toExponential(3) + ' Pa';
+    document.getElementById('res-vm-min').textContent = data.stress.vm_min.toExponential(3) + ' Pa';
+    const mean = data.stress.von_mises.reduce((a, b) => a + b, 0) / data.stress.von_mises.length;
+    document.getElementById('res-vm-mean').textContent = mean.toExponential(3) + ' Pa';
+  }
+
+  if (data.paths) {
+    document.getElementById('res-paths').textContent =
+      `${data.paths.n_paths}` + (data.paths.n_paths_total ? ` / ${data.paths.n_paths_total}` : '');
+    document.getElementById('res-fiber').textContent = (data.paths.total_length_mm || '--') + ' mm';
+  }
+
+  if (data.topo) {
+    document.getElementById('res-topo-status').textContent = 'Available';
+    document.getElementById('res-topo-elements').textContent = data.topo.centroids.length.toLocaleString();
+  } else {
+    document.getElementById('res-topo-status').textContent = 'N/A';
+    document.getElementById('res-topo-elements').textContent = '--';
+  }
+
+  if (data.gcode && data.gcode.positions && data.gcode.is_print) {
+    const pts = data.gcode.positions.length;
+    const printPts = data.gcode.is_print.filter(Boolean).length;
+    document.getElementById('res-gcode-print').textContent = printPts.toLocaleString();
+    document.getElementById('res-gcode-travel').textContent = (pts - printPts).toLocaleString();
+  }
+}
+
+function updateResult(id, value) {
+  const el = document.getElementById('res-' + id);
+  if (el) el.textContent = value;
+}
+
+// ════════════════════════════════════════════════════════
+//  Compute Pipeline
+// ════════════════════════════════════════════════════════
+async function apiPost(url, data) {
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  return res.json();
+}
+
+function updateProgress(pct, msg) {
+  document.getElementById('progress-bar-inner').style.width = pct + '%';
+  document.getElementById('compute-status-text').textContent = msg;
+  document.getElementById('bottom-status').textContent = 'Status: ' + msg;
+}
+
+async function runCompute() {
+  const btn = document.getElementById('btn-compute');
+  btn.disabled = true;
+
+  const modelType = document.querySelector('input[name="model"]:checked').value;
+  const strategy = document.querySelector('input[name="strategy"]:checked').value;
+
+  updateProgress(0, 'Generating mesh...');
+
+  try {
+    // STL upload path
+    if (modelType === 'stl') {
+      const fileInput = document.getElementById('stl-file');
+      if (!fileInput.files[0]) {
+        updateProgress(0, 'Please select an STL file / 请选择STL文件');
+        btn.disabled = false;
+        return;
+      }
+      const formData = new FormData();
+      formData.append('file', fileInput.files[0]);
+      formData.append('mesh_size', document.getElementById('mesh-size').value);
+      updateProgress(10, 'Uploading STL...');
+      const uploadRes = await (await fetch('/api/upload_stl', { method: 'POST', body: formData })).json();
+      if (uploadRes.error) { updateProgress(0, 'Upload error: ' + uploadRes.error); btn.disabled = false; return; }
+      updateProgress(25, 'STL uploaded. Running FEA...');
+    } else {
+      // Build mesh params
+      let meshParams = {};
+      if (modelType === 'cylinder') {
+        meshParams = {
+          model: 'cylinder',
+          r_outer: parseFloat(document.getElementById('r-outer').value),
+          r_inner: parseFloat(document.getElementById('r-inner').value),
+          height: parseFloat(document.getElementById('height').value),
+          mesh_size: parseFloat(document.getElementById('mesh-size').value),
+        };
+      } else if (modelType === 'cone') {
+        meshParams = {
+          model: 'cone',
+          r_bottom: parseFloat(document.getElementById('r-bottom').value),
+          r_top: parseFloat(document.getElementById('r-top').value),
+          height: parseFloat(document.getElementById('cone-height').value),
+          wall: parseFloat(document.getElementById('wall').value),
+          mesh_size: parseFloat(document.getElementById('mesh-size').value),
+        };
+      }
+
+      // Step 1: Mesh
+      const meshRes = await apiPost('/api/mesh', meshParams);
+      if (meshRes.error) { updateProgress(0, 'Mesh error: ' + meshRes.error); btn.disabled = false; return; }
+      updateProgress(25, 'Mesh OK. Running FEA...');
+    }
+
+    // Step 2: FEA
+    const feaRes = await apiPost('/api/fea', {
+      E_gpa: parseFloat(document.getElementById('e-gpa').value),
+      nu: 0.3,
+      P: parseFloat(document.getElementById('load-p').value),
+    });
+    if (feaRes.error) { updateProgress(25, 'FEA error: ' + feaRes.error); btn.disabled = false; return; }
+    updateProgress(50, `FEA done (VM=${feaRes.max_von_mises.toFixed(1)}MPa). Planning paths...`);
+    updateResult('elements', feaRes.n_surface_tris);
+    updateResult('vm-max', feaRes.max_von_mises.toFixed(2) + ' MPa');
+
+    // Step 3: Paths
+    const pathRes = await apiPost('/api/paths', {
+      strategy: strategy,
+      spacing: parseFloat(document.getElementById('spacing').value),
+    });
+    if (pathRes.error) { updateProgress(50, 'Path error: ' + pathRes.error); btn.disabled = false; return; }
+    updateProgress(75, 'Paths done. Generating G-code...');
+    updateResult('paths', pathRes.total_paths);
+    updateResult('fiber', Math.round(pathRes.total_fiber_mm) + ' mm');
+    if (pathRes.wall_fill_rate !== undefined) updateResult('vf', (pathRes.wall_fill_rate * 100).toFixed(1) + '%');
+    if (pathRes.mean_coverage !== undefined) updateResult('coverage', (pathRes.mean_coverage * 100).toFixed(1) + '%');
+    if (pathRes.balance !== undefined) updateResult('balance', (pathRes.balance * 100).toFixed(1) + '%');
+    if (pathRes.layer_coverages) {
+      const lcText = pathRes.layer_coverages.map((c, i) => `L${i}: ${(c*100).toFixed(0)}%`).join(' | ');
+      let lcEl = document.getElementById('res-layer-cov');
+      if (lcEl) lcEl.textContent = lcText;
+    }
+
+    // Step 4: G-code
+    const gcRes = await apiPost('/api/gcode', {
+      firmware: 'klipper',
+      feed_rate: 600,
+    });
+    if (gcRes.error) { updateProgress(75, 'G-code error: ' + gcRes.error); btn.disabled = false; return; }
+    updateProgress(100, 'Done!');
+    updateResult('gcode-lines', gcRes.n_lines);
+    updateResult('gcode-cuts', gcRes.n_cuts);
+    updateResult('gcode-fiber', Math.round(gcRes.fiber_mm) + ' mm');
+
+    // Load results into viewer
+    await loadLiveData();
+    autoCenterCamera();
+    updateScene();
+
+  } catch (e) {
+    updateProgress(0, 'Error: ' + e.message);
+    console.error(e);
+  }
+
+  btn.disabled = false;
+}
+
+// ════════════════════════════════════════════════════════
+//  UI Event Handlers
+// ════════════════════════════════════════════════════════
+
+// Section collapse/expand
+document.querySelectorAll('.section-header').forEach(header => {
+  header.addEventListener('click', () => {
+    header.classList.toggle('collapsed');
+    const body = header.nextElementSibling;
+    if (body && body.classList.contains('section-body')) {
+      body.classList.toggle('collapsed');
+    }
+  });
+});
+
+// Model radio -> toggle param groups
+document.querySelectorAll('input[name="model"]').forEach(radio => {
+  radio.addEventListener('change', () => {
+    const val = radio.value;
+    document.getElementById('params-cylinder').classList.toggle('visible', val === 'cylinder');
+    document.getElementById('params-cone').classList.toggle('visible', val === 'cone');
+    document.getElementById('stl-upload-area').classList.toggle('visible', val === 'stl');
+  });
+});
+
+// STL file input
+document.getElementById('stl-file').addEventListener('change', (e) => {
+  const name = e.target.files[0] ? e.target.files[0].name : 'No file selected';
+  document.getElementById('stl-filename').textContent = name;
+});
+
+// All sliders -> update value display
+document.querySelectorAll('.slider-row input[type=range]').forEach(slider => {
+  const valEl = slider.parentElement.querySelector('.slider-val');
+  if (valEl) {
+    const update = () => { valEl.textContent = slider.value; };
+    slider.addEventListener('input', update);
+  }
+});
+
+// Compute button
+document.getElementById('btn-compute').addEventListener('click', runCompute);
+
+// Optimize button
+document.getElementById('btn-optimize').addEventListener('click', async () => {
+  const statusEl = document.getElementById('optimize-status');
+  statusEl.textContent = 'Optimizing (may take 1-2 min)...';
+  document.getElementById('btn-optimize').disabled = true;
+
+  try {
+    const loadP = parseFloat(document.getElementById('load-p').value);
+    const res = await apiPost('/api/optimize', { n_starts: 6, max_iter: 15, P: loadP });
+    if (res.error) { statusEl.textContent = 'Error: ' + res.error; document.getElementById('btn-optimize').disabled = false; return; }
+
+    statusEl.textContent = 'Done! Improvement: ' + res.improvement_pct.toFixed(1) + '%\n' +
+      'Optimal: [' + res.optimal_layup.map(function(a) { return '\u00b1' + a.toFixed(0) + '\u00b0'; }).join(', ') + ']\n' +
+      'Current: [' + res.current_layup.map(function(a) { return '\u00b1' + a.toFixed(0) + '\u00b0'; }).join(', ') + ']';
+
+    updateResult('opt-layup', res.optimal_layup.map(function(a) { return '\u00b1' + a.toFixed(0) + '\u00b0'; }).join('/'));
+    updateResult('opt-improvement', res.improvement_pct.toFixed(1) + '%');
+  } catch(e) {
+    statusEl.textContent = 'Error: ' + e.message;
+  }
+  document.getElementById('btn-optimize').disabled = false;
+});
+
+// View mode buttons
+document.querySelectorAll('.view-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.view-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    state.mode = btn.dataset.mode;
+    updateScene();
+  });
+});
+
+// Display checkboxes
+document.getElementById('show-grid').addEventListener('change', (e) => { grid.visible = e.target.checked; });
+document.getElementById('show-axes').addEventListener('change', (e) => { axes.visible = e.target.checked; });
+document.getElementById('show-directions').addEventListener('change', updateScene);
+
+// Display sliders & colormap
+document.getElementById('opacity-slider').addEventListener('input', updateScene);
+document.getElementById('size-slider').addEventListener('input', updateScene);
+document.getElementById('cmap-select').addEventListener('change', updateScene);
+
+// G-code controls
+document.getElementById('gcode-progress').addEventListener('input', (e) => {
+  document.getElementById('gcode-pct').textContent = Math.round(e.target.value / 10) + '%';
+  if (state.mode === 'gcode') updateScene();
+});
+
+document.getElementById('gcode-play').addEventListener('click', () => {
+  state.gcodeAnim.playing = !state.gcodeAnim.playing;
+  document.getElementById('gcode-play').innerHTML = state.gcodeAnim.playing
+    ? '<span>&#9646;&#9646;</span>'
+    : '<span>&#9654;</span>';
+});
+
+document.getElementById('gcode-speed').addEventListener('input', (e) => {
+  state.gcodeAnim.speed = parseInt(e.target.value);
+});
+
+// Screenshot
+document.getElementById('btn-screenshot').addEventListener('click', () => {
+  renderer.render(scene, camera);
+  const link = document.createElement('a');
+  link.download = `cfpp_${state.model}_${state.mode}.png`;
+  link.href = canvas.toDataURL();
+  link.click();
+});
+
+// Reset view
+document.getElementById('btn-reset').addEventListener('click', autoCenterCamera);
+
+// ════════════════════════════════════════════════════════
+//  Resize
+// ════════════════════════════════════════════════════════
+function onResize() {
+  const vp = document.getElementById('viewport');
+  const w = vp.clientWidth;
+  const h = vp.clientHeight;
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+  renderer.setSize(w, h);
+}
+window.addEventListener('resize', onResize);
+
+// ════════════════════════════════════════════════════════
+//  Animation Loop
+// ════════════════════════════════════════════════════════
+function animate() {
+  requestAnimationFrame(animate);
+  controls.update();
+
+  if (state.gcodeAnim.playing && state.mode === 'gcode') {
+    const slider = document.getElementById('gcode-progress');
+    let val = parseInt(slider.value) + state.gcodeAnim.speed / 10;
+    if (val > 1000) val = 0;
+    slider.value = val;
+    document.getElementById('gcode-pct').textContent = Math.round(val / 10) + '%';
+    updateScene();
+  }
+
+  renderer.render(scene, camera);
+}
+
+// ════════════════════════════════════════════════════════
+//  Init
+// ════════════════════════════════════════════════════════
+async function init() {
+  try {
+    onResize();
+    // Try live data first, fall back to precomputed
+    const liveData = await loadModelData('live');
+    if (!liveData || (!liveData.stress && !liveData.paths)) {
+      state.model = 'structured';
+      await loadModelData('structured');
+    }
+    autoCenterCamera();
+    updateScene();
+    animate();
+  } catch (e) {
+    console.error('Init failed:', e);
+    document.getElementById('loading-overlay').classList.remove('hidden');
+    document.getElementById('loading-overlay').innerHTML =
+      `<div style="color:#ef5350;font-size:16px;padding:20px;">Error: ${e.message}</div>`;
+  }
+}
+
+init();
+</script>
+</body>
+</html>
