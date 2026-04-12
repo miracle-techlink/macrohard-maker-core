@@ -417,13 +417,13 @@ body {
 
 /* Model library grid card */
 .mlib-card {
-  border: 1.5px solid var(--border); border-radius: 10px;
+  border: 1.5px solid rgba(255,255,255,.07); border-radius: 10px;
   padding: 14px 8px 12px; cursor: pointer; text-align: center;
-  background: var(--bg-input); transition: border-color .15s, background .15s, transform .1s;
+  background: rgba(255,255,255,.05); transition: border-color .15s, background .15s, transform .12s;
   display: flex; flex-direction: column; align-items: center; gap: 5px;
 }
-.mlib-card:hover { border-color: var(--blue); background: var(--blue-light); transform: translateY(-1px); }
-.mlib-card.active { border-color: var(--blue); background: var(--blue-light); box-shadow: 0 0 0 2px rgba(59,130,246,.3); }
+.mlib-card:hover { border-color: rgba(99,160,255,.6); background: rgba(99,160,255,.08); transform: translateY(-2px); }
+.mlib-card.active { border-color: var(--blue); background: rgba(59,130,246,.12); box-shadow: 0 0 0 2px rgba(59,130,246,.25); }
 .mlib-card-icon { font-size: 26px; line-height: 1.2; }
 .mlib-card-name { font-size: 12px; font-weight: 600; color: var(--text-primary); }
 .mlib-card-desc { font-size: 10px; color: var(--text-hint); line-height: 1.3; }
@@ -1042,7 +1042,7 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 });
 </script>
-  <div id="model-lib-modal" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:860px;max-width:97vw;height:580px;max-height:93vh;background:var(--bg-panel);border-radius:14px;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 24px 80px rgba(0,0,0,.5);">
+  <div id="model-lib-modal" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:860px;max-width:97vw;height:580px;max-height:93vh;background:#1a1f2e;border-radius:14px;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 24px 80px rgba(0,0,0,.6);">
     <!-- Header -->
     <div style="display:flex;align-items:center;padding:14px 20px 12px;border-bottom:1px solid var(--border);flex-shrink:0;gap:10px;">
       <span style="font-size:16px;font-weight:700;color:var(--text-primary);">📦 内置模型库</span>
@@ -1060,23 +1060,23 @@ document.addEventListener('DOMContentLoaded', () => {
       </div>
 
       <!-- Floating detail card (shown on card click) -->
-      <div id="mlib-detail-card" style="display:none;position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:440px;background:var(--bg-panel);border:1px solid var(--border);border-radius:14px;box-shadow:0 16px 60px rgba(0,0,0,.7);z-index:10;overflow:hidden;flex-direction:column;" onclick="event.stopPropagation()">
-        <!-- Card 3D preview -->
-        <div style="height:240px;position:relative;background:#0c1018;">
+      <div id="mlib-detail-card" style="display:none;position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:360px;background:#f4f6fb;border:none;border-radius:16px;box-shadow:0 20px 70px rgba(0,0,0,.55),0 0 0 1px rgba(255,255,255,.12);z-index:10;overflow:hidden;flex-direction:column;" onclick="event.stopPropagation()">
+        <!-- Card 3D preview — light bg -->
+        <div style="height:220px;position:relative;background:linear-gradient(145deg,#e8eef8 0%,#f0f4fc 100%);">
           <canvas id="mlib-canvas" style="width:100%;height:100%;display:block;"></canvas>
-          <button onclick="closeMlibDetail()" style="position:absolute;top:10px;right:10px;background:rgba(0,0,0,.55);border:none;color:rgba(255,255,255,.8);border-radius:8px;padding:4px 10px;cursor:pointer;font-size:14px;line-height:1.4;">✕</button>
-          <div style="position:absolute;bottom:8px;left:50%;transform:translateX(-50%);font-size:10px;color:rgba(255,255,255,.25);pointer-events:none;white-space:nowrap;">拖动旋转 · 滚轮缩放</div>
+          <button onclick="closeMlibDetail()" style="position:absolute;top:10px;right:10px;background:rgba(0,0,0,.12);border:none;color:rgba(0,0,0,.5);border-radius:8px;padding:4px 10px;cursor:pointer;font-size:14px;line-height:1.4;backdrop-filter:blur(4px);">✕</button>
+          <div style="position:absolute;bottom:8px;left:50%;transform:translateX(-50%);font-size:10px;color:rgba(0,0,0,.25);pointer-events:none;white-space:nowrap;">拖动旋转 · 滚轮缩放</div>
         </div>
         <!-- Card info + import -->
-        <div style="padding:16px 18px 18px;">
-          <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;">
-            <span id="mlib-detail-icon" style="font-size:24px;"></span>
+        <div style="padding:14px 18px 18px;background:#f4f6fb;">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px;">
+            <span id="mlib-detail-icon" style="font-size:26px;"></span>
             <div>
-              <div id="mlib-name" style="font-size:15px;font-weight:700;color:var(--text-primary);"></div>
-              <div id="mlib-desc" style="font-size:11px;color:var(--text-hint);margin-top:2px;"></div>
+              <div id="mlib-name" style="font-size:15px;font-weight:700;color:#1a2035;"></div>
+              <div id="mlib-desc" style="font-size:11px;color:#6b7a99;margin-top:2px;"></div>
             </div>
           </div>
-          <button id="mlib-load-btn" onclick="loadSelectedBuiltinModel()" style="margin-top:10px;width:100%;padding:10px;background:var(--blue);color:#fff;border:none;border-radius:9px;font-size:14px;font-weight:600;cursor:pointer;letter-spacing:.3px;">
+          <button id="mlib-load-btn" onclick="loadSelectedBuiltinModel()" style="margin-top:12px;width:100%;padding:10px;background:var(--blue);color:#fff;border:none;border-radius:10px;font-size:14px;font-weight:600;cursor:pointer;letter-spacing:.3px;box-shadow:0 4px 14px rgba(59,130,246,.4);">
             导入此模型
           </button>
         </div>
@@ -2115,16 +2115,16 @@ function initMlibRenderer() {
   if (!canvas || mlibRenderer) return;
 
   mlibRenderer = new THREE.WebGLRenderer({ canvas, antialias: true });
-  mlibRenderer.setClearColor(0x0d1117);
+  mlibRenderer.setClearColor(0xeef1f8);
   mlibRenderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 
   mlibScene = new THREE.Scene();
   mlibCamera = new THREE.PerspectiveCamera(45, 1, 0.1, 5000);
   mlibCamera.position.set(0, 80, 250);
 
-  mlibScene.add(new THREE.AmbientLight(0xffffff, 0.5));
-  const dl = new THREE.DirectionalLight(0xffffff, 0.9); dl.position.set(1,2,3); mlibScene.add(dl);
-  const dl2 = new THREE.DirectionalLight(0x8899ff, 0.4); dl2.position.set(-2,-1,-1); mlibScene.add(dl2);
+  mlibScene.add(new THREE.AmbientLight(0xffffff, 0.7));
+  const dl = new THREE.DirectionalLight(0xffffff, 1.0); dl.position.set(2,3,4); mlibScene.add(dl);
+  const dl2 = new THREE.DirectionalLight(0xaabbff, 0.35); dl2.position.set(-3,-1,-2); mlibScene.add(dl2);
 
   let isDrag = false, lx = 0, ly = 0, theta = 0.4, phi = 1.1, R = 250;
   const target = new THREE.Vector3();
@@ -2171,15 +2171,14 @@ async function loadMlibPreview(url) {
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
     geo.setAttribute('normal', new THREE.BufferAttribute(normals, 3));
-    const mat = new THREE.MeshPhongMaterial({ color: 0x2d6fd4, emissive: 0x071428, specular: 0x88aaff, shininess: 55, side: THREE.DoubleSide });
+    const mat = new THREE.MeshPhongMaterial({ color: 0x4a7fd4, emissive: 0x1a3a6a, specular: 0xffffff, shininess: 80, side: THREE.DoubleSide });
     mlibMesh = new THREE.Mesh(geo, mat);
     geo.computeBoundingBox();
     const center = new THREE.Vector3(); geo.boundingBox.getCenter(center);
     mlibMesh.position.sub(center);
     const size = new THREE.Vector3(); geo.boundingBox.getSize(size);
     mlibScene._fit(new THREE.Vector3(), Math.max(size.x, size.y, size.z) * 1.8);
-    const wf = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color: 0x5588ff, wireframe: true, transparent: true, opacity: 0.07 }));
-    mlibMesh.add(wf);
+    // no wireframe overlay on light bg
     mlibScene.add(mlibMesh);
   } catch(e) { console.error('preview fail', e); }
 }
