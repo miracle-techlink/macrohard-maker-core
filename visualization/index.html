@@ -405,6 +405,20 @@ body {
   font-size: 11px; color: var(--text-hint); margin-top: 4px;
 }
 
+/* Model library grid */
+.model-library { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 10px; }
+.model-card {
+  border: 1.5px solid var(--border); border-radius: var(--radius-md);
+  padding: 8px 6px; cursor: pointer; text-align: center;
+  transition: border-color 0.15s, background 0.15s;
+  background: var(--bg-panel);
+}
+.model-card:hover { border-color: var(--blue); background: var(--blue-light); }
+.model-card.active { border-color: var(--blue); background: var(--blue-light); }
+.model-card-icon { font-size: 20px; line-height: 1.3; }
+.model-card-name { font-size: 11px; font-weight: 600; color: var(--text-primary); margin-top: 2px; }
+.model-card-desc { font-size: 10px; color: var(--text-hint); margin-top: 1px; line-height: 1.3; }
+
 /* STL upload drop zone */
 .rp-stl-drop {
   border: 2px dashed var(--border); border-radius: var(--radius-md);
@@ -850,59 +864,19 @@ body {
 
     <div class="rp-scroll">
 
-      <!-- Model Source -->
+      <!-- Model Source: STL only -->
       <div class="rp-section">
-        <div class="rp-section-title">模型来源</div>
-        <div class="rp-tab-selector" id="model-source-tabs">
-          <div class="rp-tab-option active" onclick="selectModelSource(this,'cylinder')">圆柱</div>
-          <div class="rp-tab-option" onclick="selectModelSource(this,'cone')">锥体</div>
-          <div class="rp-tab-option" onclick="selectModelSource(this,'stl')">STL</div>
+        <div class="rp-section-title">模型库</div>
+        <div class="model-library" id="model-library-grid">
+          <!-- populated by loadModelLibrary() -->
         </div>
-      </div>
-
-      <!-- Geometry Params (cylinder/cone) -->
-      <div class="rp-section" id="geom-params-section">
-        <div class="rp-section-title">几何参数</div>
-        <div class="rp-param-row">
-          <span class="rp-param-label">外径</span>
-          <div class="rp-param-value">
-            <input type="number" class="rp-param-input" id="rp-r-outer" value="25" step="1" min="5" max="200">
-            <span class="rp-param-unit">mm</span>
-          </div>
-        </div>
-        <div class="rp-param-row">
-          <span class="rp-param-label">内径</span>
-          <div class="rp-param-value">
-            <input type="number" class="rp-param-input" id="rp-r-inner" value="20" step="1" min="0" max="200">
-            <span class="rp-param-unit">mm</span>
-          </div>
-        </div>
-        <div class="rp-param-row">
-          <span class="rp-param-label">高度</span>
-          <div class="rp-param-value">
-            <input type="number" class="rp-param-input" id="rp-height" value="80" step="5" min="10" max="500">
-            <span class="rp-param-unit">mm</span>
-          </div>
-        </div>
-        <div class="rp-param-row" id="rp-r-top-row" style="display:none">
-          <span class="rp-param-label">顶径</span>
-          <div class="rp-param-value">
-            <input type="number" class="rp-param-input" id="rp-r-top" value="15" step="1" min="0" max="200">
-            <span class="rp-param-unit">mm</span>
-          </div>
-        </div>
-      </div>
-
-      <!-- STL Upload -->
-      <div class="rp-section" id="stl-upload-section" style="display:none">
-        <div class="rp-section-title">导入 STL 文件</div>
         <div class="rp-stl-drop" id="rp-stl-drop"
           onclick="triggerStlPick()"
           ondragover="event.preventDefault()"
           ondrop="handleStlDrop(event)">
           <div class="rp-stl-icon">&#8682;</div>
-          <div class="rp-stl-text">点击上传 STL 文件</div>
-          <div class="rp-stl-hint">或拖拽到此处</div>
+          <div class="rp-stl-text">导入自定义 STL</div>
+          <div class="rp-stl-hint">点击或拖拽 .stl 文件</div>
           <div id="rp-stl-name" class="rp-stl-loaded" style="display:none"></div>
         </div>
       </div>
@@ -1915,24 +1889,86 @@ function toggleObjList() {
 }
 
 function importModel() {
-  // Switch to STL mode and trigger file picker
-  const stlTab = document.querySelector('#model-source-tabs .rp-tab-option:last-child');
-  if (stlTab) selectModelSource(stlTab, 'stl');
   triggerStlPick();
 }
 
 // ============================
-// MODEL SOURCE
+// MODEL SOURCE (STL only)
 // ============================
-let modelSource = 'cylinder';
+let modelSource = 'stl';
 
-function selectModelSource(el, type) {
-  document.querySelectorAll('#model-source-tabs .rp-tab-option').forEach(t => t.classList.remove('active'));
-  el.classList.add('active');
-  modelSource = type;
-  document.getElementById('geom-params-section').style.display = type === 'stl' ? 'none' : 'block';
-  document.getElementById('stl-upload-section').style.display = type === 'stl' ? 'block' : 'none';
-  document.getElementById('rp-r-top-row').style.display = type === 'cone' ? 'flex' : 'none';
+function selectModelSource(el, type) { /* legacy stub */ }
+
+// ============================
+// BUILT-IN MODEL LIBRARY
+// ============================
+async function loadModelLibrary() {
+  try {
+    const res = await fetch('http://localhost:8765/api/models');
+    const data = await res.json();
+    const grid = document.getElementById('model-library-grid');
+    if (!grid || !data.models) return;
+    grid.innerHTML = '';
+    data.models.forEach(m => {
+      const card = document.createElement('div');
+      card.className = 'model-card';
+      card.dataset.modelId = m.id;
+      card.innerHTML = `
+        <div class="model-card-icon">${m.icon}</div>
+        <div class="model-card-name">${m.name}</div>
+        <div class="model-card-desc">${m.desc}</div>`;
+      card.onclick = () => loadBuiltinModel(m, card);
+      grid.appendChild(card);
+    });
+  } catch (e) { /* server not ready yet */ }
+}
+
+async function loadBuiltinModel(model, cardEl) {
+  // Highlight selected card
+  document.querySelectorAll('.model-card').forEach(c => c.classList.remove('active'));
+  cardEl.classList.add('active');
+
+  const drop = document.getElementById('rp-stl-drop');
+  const nameEl = document.getElementById('rp-stl-name');
+  drop.style.borderColor = 'var(--blue)';
+  nameEl.style.display = 'none';
+  showToast('加载 ' + model.name + '...');
+
+  try {
+    // Fetch the STL as a blob and upload via /api/upload_stl
+    const stlRes = await fetch('http://localhost:8765' + model.url);
+    const blob = await stlRes.blob();
+    const file = new File([blob], model.id + '.stl', { type: 'application/octet-stream' });
+
+    const fd = new FormData();
+    fd.append('file', file);
+    fd.append('mesh_size', '2.5');
+
+    const res = await fetch('http://localhost:8765/api/upload_stl', {
+      method: 'POST', body: fd,
+      signal: AbortSignal.timeout(30000)
+    });
+    const data = await res.json();
+    if (data.status === 'ok') {
+      nameEl.textContent = '✓ ' + model.name;
+      nameEl.style.display = 'block';
+      drop.style.borderColor = 'var(--green)';
+      setServerOnline(true);
+      showToast(model.name + ' 加载成功');
+      updateViewportForStl(model.name);
+      document.getElementById('obj-list-empty').style.display = 'none';
+      document.getElementById('obj-list-cylinder').style.display = 'flex';
+      document.getElementById('obj-list-cylinder').querySelector('span:last-child').textContent = model.name;
+    } else {
+      showToast('加载失败: ' + (data.error || '未知错误'));
+      drop.style.borderColor = 'var(--red)';
+      cardEl.classList.remove('active');
+    }
+  } catch (e) {
+    showToast('后端未启动，请先运行 server.py');
+    drop.style.borderColor = 'var(--border)';
+    cardEl.classList.remove('active');
+  }
 }
 
 function triggerStlPick() {
@@ -2118,33 +2154,8 @@ async function generateGcode() {
   try {
     setServerOnline(true);
 
-    // Step 1: mesh
-    if (modelSource !== 'stl') {
-      setProgress(10, '生成几何网格...');
-      let meshParams;
-      if (modelSource === 'cylinder') {
-        meshParams = {
-          model: 'cylinder',
-          r_outer: parseFloat(document.getElementById('rp-r-outer').value),
-          r_inner: parseFloat(document.getElementById('rp-r-inner').value),
-          height: parseFloat(document.getElementById('rp-height').value),
-          mesh_size: 3.0
-        };
-      } else {
-        meshParams = {
-          model: 'cone',
-          r_bottom: parseFloat(document.getElementById('rp-r-outer').value),
-          r_top: parseFloat(document.getElementById('rp-r-top').value || '15'),
-          height: parseFloat(document.getElementById('rp-height').value),
-          wall: 5.0, mesh_size: 3.0
-        };
-      }
-      const meshResult = await callApi('/api/mesh', meshParams);
-      if (meshResult.error) throw new Error('网格: ' + meshResult.error);
-      setProgress(25, '网格就绪');
-    } else {
-      setProgress(25, '使用已上传 STL');
-    }
+    // Step 1: mesh — always STL mode
+    setProgress(25, '使用已上传 STL');
 
     // Step 2: FEA (only for stress strategy)
     if (strategy === 'stress') {
@@ -2391,6 +2402,9 @@ window.addEventListener('DOMContentLoaded', () => {
   initThree();
   checkServerStatus();
   setInterval(checkServerStatus, 15000);
+  loadModelLibrary();
+  // Retry library load after server warms up
+  setTimeout(loadModelLibrary, 3000);
 
   // Init slider gradients
   updateSpeedSlider(document.getElementById('rp-speed-slider'));

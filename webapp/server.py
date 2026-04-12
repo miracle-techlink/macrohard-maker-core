@@ -696,6 +696,36 @@ def api_optimize(params):
     }
 
 
+MODELS_DIR = os.path.join(VIZ_DIR, "models")
+
+MODELS_META = {
+    "hollow_tube":     {"name": "空心圆管",    "desc": "基础圆柱管件，CF缠绕演示", "icon": "🔵"},
+    "l_bracket":       {"name": "L形支架",     "desc": "结构支架，应力集中典型",    "icon": "📐"},
+    "t_joint":         {"name": "T形三通",     "desc": "管道三通接头",              "icon": "🔀"},
+    "pressure_vessel": {"name": "压力容器",    "desc": "球端封头圆柱壳体",          "icon": "🫙"},
+    "propeller_hub":   {"name": "四轴桨座",    "desc": "无人机电机座 + 四臂",       "icon": "🚁"},
+    "wing_spar":       {"name": "翼梁截面",    "desc": "航空矩形中空翼梁",          "icon": "✈️"},
+    "hex_tube":        {"name": "六棱管",      "desc": "六边形截面蜂窝管件",         "icon": "⬡"},
+    "curved_beam":     {"name": "C形曲梁",     "desc": "半圆环形曲线梁",            "icon": "🌙"},
+}
+
+
+def api_list_models():
+    models = []
+    for key, meta in MODELS_META.items():
+        stl_path = os.path.join(MODELS_DIR, f"{key}.stl")
+        if os.path.exists(stl_path):
+            models.append({
+                "id": key,
+                "name": meta["name"],
+                "desc": meta["desc"],
+                "icon": meta["icon"],
+                "url": f"/models/{key}.stl",
+                "size": os.path.getsize(stl_path),
+            })
+    return {"models": models}
+
+
 # ======================================================================
 # HTTP Server with API routing
 # ======================================================================
@@ -840,6 +870,8 @@ class CFPPHandler(SimpleHTTPRequestHandler):
         try:
             if endpoint == "status":
                 result = {"status": "ok", "version": "1.0"}
+            elif endpoint == "models":
+                result = api_list_models()
             elif endpoint == "mesh":
                 result = api_mesh(params)
             elif endpoint == "fea":
