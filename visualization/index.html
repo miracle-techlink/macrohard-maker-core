@@ -2195,8 +2195,8 @@ async function loadSelectedBuiltinModel() {
   showToast('加载 ' + model.name + '...');
 
   try {
-    const blob = await (await fetch('http://localhost:8765' + model.url)).blob();
-    const file = new File([blob], model.id + '.stl', { type: 'application/octet-stream' });
+    const stlBuf = await (await fetch('http://localhost:8765' + model.url)).arrayBuffer();
+    const file = new File([stlBuf], model.id + '.stl', { type: 'application/octet-stream' });
     const fd = new FormData();
     fd.append('file', file); fd.append('mesh_size', '2.5');
     const data = await (await fetch('http://localhost:8765/api/upload_stl', { method: 'POST', body: fd, signal: AbortSignal.timeout(30000) })).json();
@@ -2206,7 +2206,7 @@ async function loadSelectedBuiltinModel() {
       drop.style.borderColor = 'var(--green)';
       setServerOnline(true);
       showToast(model.name + ' 加载成功');
-      updateViewportForStl(model.name);
+      updateViewportForStl(model.name, stlBuf);
       document.getElementById('obj-list-empty').style.display = 'none';
       document.getElementById('obj-list-cylinder').style.display = 'flex';
       document.getElementById('obj-list-cylinder').querySelector('span:last-child').textContent = model.name;
@@ -2244,6 +2244,7 @@ async function uploadStlFile(file) {
   nameEl.style.display = 'none';
   showToast('正在上传 ' + file.name + '...');
 
+  const stlBuf = await file.arrayBuffer();
   const fd = new FormData();
   fd.append('file', file);
   fd.append('mesh_size', '2.5');
@@ -2260,7 +2261,7 @@ async function uploadStlFile(file) {
       drop.style.borderColor = 'var(--green)';
       setServerOnline(true);
       showToast('STL 导入成功');
-      updateViewportForStl(file.name);
+      updateViewportForStl(file.name, stlBuf);
       document.getElementById('obj-list-empty').style.display = 'none';
       document.getElementById('obj-list-cylinder').style.display = 'flex';
       document.getElementById('obj-list-cylinder').querySelector('span:last-child').textContent = file.name;
@@ -2274,18 +2275,48 @@ async function uploadStlFile(file) {
   }
 }
 
-function updateViewportForStl(name) {
+function updateViewportForStl(name, stlBuffer) {
   if (cylinderMesh) { scene.remove(cylinderMesh); cylinderMesh = null; }
   if (helixGroup) { scene.remove(helixGroup); helixGroup = null; }
-  // Show generic mesh placeholder
-  const geo = new THREE.BoxGeometry(30, 40, 30);
-  const mat = new THREE.MeshPhongMaterial({ color: 0x3a4a6b, transparent: true, opacity: 0.55 });
+
+  if (!stlBuffer) return;
+
+  const { positions, normals } = parseSTL(stlBuffer);
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  geo.setAttribute('normal', new THREE.BufferAttribute(normals, 3));
+
+  // Center model at Y=0 base
+  geo.computeBoundingBox();
+  const box = geo.boundingBox;
+  const cx = (box.max.x + box.min.x) / 2;
+  const cy = (box.max.y + box.min.y) / 2;
+  const cz = (box.max.z + box.min.z) / 2;
+  const offsetY = -box.min.y;
+
+  const mat = new THREE.MeshPhongMaterial({
+    color: 0x3a7bd5, emissive: 0x0a1a3a,
+    specular: 0x88aaff, shininess: 50,
+    transparent: true, opacity: 0.82,
+    side: THREE.DoubleSide
+  });
   cylinderMesh = new THREE.Mesh(geo, mat);
-  cylinderMesh.position.y = 20;
+  cylinderMesh.position.set(-cx, offsetY - cy, -cz);
   scene.add(cylinderMesh);
-  const wf = new THREE.Mesh(geo,
-    new THREE.MeshBasicMaterial({ color: 0x4466bb, wireframe: true, transparent: true, opacity: 0.2 }));
+
+  const wf = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({
+    color: 0x4466cc, wireframe: true, transparent: true, opacity: 0.12
+  }));
   cylinderMesh.add(wf);
+
+  // Fit camera to model
+  const size = new THREE.Vector3();
+  box.getSize(size);
+  const maxDim = Math.max(size.x, size.y, size.z);
+  if (camera) {
+    camera.position.set(maxDim * 1.2, maxDim * 0.8, maxDim * 1.8);
+    camera.lookAt(0, size.y / 2, 0);
+  }
 }
 
 // ============================
