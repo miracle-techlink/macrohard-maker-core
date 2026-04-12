@@ -699,14 +699,41 @@ def api_optimize(params):
 MODELS_DIR = os.path.join(VIZ_DIR, "models")
 
 MODELS_META = {
-    "hollow_tube":     {"name": "空心圆管",    "desc": "基础圆柱管件，CF缠绕演示", "icon": "🔵"},
-    "l_bracket":       {"name": "L形支架",     "desc": "结构支架，应力集中典型",    "icon": "📐"},
-    "t_joint":         {"name": "T形三通",     "desc": "管道三通接头",              "icon": "🔀"},
-    "pressure_vessel": {"name": "压力容器",    "desc": "球端封头圆柱壳体",          "icon": "🫙"},
-    "propeller_hub":   {"name": "四轴桨座",    "desc": "无人机电机座 + 四臂",       "icon": "🚁"},
-    "wing_spar":       {"name": "翼梁截面",    "desc": "航空矩形中空翼梁",          "icon": "✈️"},
-    "hex_tube":        {"name": "六棱管",      "desc": "六边形截面蜂窝管件",         "icon": "⬡"},
-    "curved_beam":     {"name": "C形曲梁",     "desc": "半圆环形曲线梁",            "icon": "🌙"},
+    # ── 基础管件 ──────────────────────────────────────────────────
+    "hollow_tube":     {"name": "空心圆管",    "desc": "基础圆柱管件，CF缠绕演示",   "icon": "🔵"},
+    "t_joint":         {"name": "T形三通",     "desc": "管道三通接头",               "icon": "🔀"},
+    "cross_joint":     {"name": "十字四通",    "desc": "X形管道交叉接头",            "icon": "➕"},
+    "elbow_pipe":      {"name": "90°弯管",     "desc": "直角弯头，各向异性明显",     "icon": "↩️"},
+    "y_junction":      {"name": "Y形分叉",     "desc": "45°管道分叉接头",            "icon": "🍴"},
+    "flange":          {"name": "法兰盘",      "desc": "标准管道法兰连接件",          "icon": "🔩"},
+    "s_curve_pipe":    {"name": "S形弯管",     "desc": "双向弯曲管道",               "icon": "〰️"},
+    "helix_coil":      {"name": "螺旋线圈",    "desc": "多圈螺旋管，弹簧形态",        "icon": "🌀"},
+    # ── 结构件 ────────────────────────────────────────────────────
+    "l_bracket":       {"name": "L形支架",     "desc": "结构支架，应力集中典型",      "icon": "📐"},
+    "i_beam":          {"name": "工字梁",      "desc": "标准工字截面结构梁",          "icon": "🏗️"},
+    "wing_spar":       {"name": "翼梁截面",    "desc": "航空矩形中空翼梁",            "icon": "✈️"},
+    "saddle_bracket":  {"name": "U形夹座",     "desc": "管道鞍形夹紧支座",            "icon": "🐎"},
+    "box_frame":       {"name": "矩形箱梁",    "desc": "封闭矩形截面箱型梁",          "icon": "📦"},
+    "rect_frame":      {"name": "矩形框架",    "desc": "平面矩形边框结构",            "icon": "⬜"},
+    "lattice_cube":    {"name": "点阵框架",    "desc": "空间桁架十二棱骨架",          "icon": "🔲"},
+    "curved_beam":     {"name": "C形曲梁",     "desc": "半圆环形曲线梁",              "icon": "🌙"},
+    # ── 壳体 ──────────────────────────────────────────────────────
+    "pressure_vessel": {"name": "压力容器",    "desc": "球端封头圆柱壳体",            "icon": "🫙"},
+    "dome":            {"name": "半球壳",      "desc": "薄壁半球形封头",              "icon": "⛺"},
+    "sphere_shell":    {"name": "球形壳",      "desc": "完整球形薄壁壳体",            "icon": "🔮"},
+    "thermos":         {"name": "双层筒",      "desc": "双壁圆柱容器",               "icon": "🧊"},
+    "cone_shell":      {"name": "锥形壳",      "desc": "空心圆锥台壳体",              "icon": "🔺"},
+    "nozzle":          {"name": "收缩喷管",    "desc": "航空发动机缩放喷嘴",          "icon": "🚀"},
+    # ── 机械零件 ──────────────────────────────────────────────────
+    "propeller_hub":   {"name": "四轴桨座",    "desc": "无人机电机座 + 四臂",         "icon": "🚁"},
+    "hex_tube":        {"name": "六棱管",      "desc": "六边形截面蜂窝管件",          "icon": "⬡"},
+    "bearing_housing": {"name": "轴承座",      "desc": "圆柱滚子轴承外壳",            "icon": "⚙️"},
+    "stepped_shaft":   {"name": "阶梯轴",      "desc": "三段变径传动轴",              "icon": "🎯"},
+    "torus_shell":     {"name": "环形壳",      "desc": "圆形截面空心圆环",            "icon": "💍"},
+    "annular_disk":    {"name": "环形盘",      "desc": "平面圆环 / 垫片",             "icon": "🪙"},
+    # ── 航空航天 ──────────────────────────────────────────────────
+    "turbine_blade":   {"name": "涡轮叶片",    "desc": "翼型截面叶片，CF铺层关键",    "icon": "🌬️"},
+    "rocket_fin":      {"name": "火箭尾翼",    "desc": "梯形平板尾翼稳定面",          "icon": "🛸"},
 }
 
 
