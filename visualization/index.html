@@ -415,16 +415,18 @@ body {
 }
 .rp-library-btn:hover { border-color: var(--blue); background: var(--blue-light); }
 
-/* Model library sidebar row */
-.mlib-row {
-  display: flex; align-items: center; gap: 10px; padding: 9px 10px;
-  border-radius: 8px; cursor: pointer; transition: background .12s;
+/* Model library grid card */
+.mlib-card {
+  border: 1.5px solid var(--border); border-radius: 10px;
+  padding: 14px 8px 12px; cursor: pointer; text-align: center;
+  background: var(--bg-input); transition: border-color .15s, background .15s, transform .1s;
+  display: flex; flex-direction: column; align-items: center; gap: 5px;
 }
-.mlib-row:hover { background: var(--bg-input); }
-.mlib-row.active { background: var(--blue-light); outline: 1.5px solid var(--blue); outline-offset: -1px; }
-.mlib-row-icon { font-size: 22px; line-height: 1; width: 28px; text-align: center; flex-shrink: 0; }
-.mlib-row-name { font-size: 13px; font-weight: 600; color: var(--text-primary); }
-.mlib-row-desc { font-size: 11px; color: var(--text-hint); margin-top: 1px; }
+.mlib-card:hover { border-color: var(--blue); background: var(--blue-light); transform: translateY(-1px); }
+.mlib-card.active { border-color: var(--blue); background: var(--blue-light); box-shadow: 0 0 0 2px rgba(59,130,246,.3); }
+.mlib-card-icon { font-size: 26px; line-height: 1.2; }
+.mlib-card-name { font-size: 12px; font-weight: 600; color: var(--text-primary); }
+.mlib-card-desc { font-size: 10px; color: var(--text-hint); line-height: 1.3; }
 
 /* STL upload drop zone */
 .rp-stl-drop {
@@ -1028,32 +1030,36 @@ body {
 
 <!-- Model Library Modal -->
 <div id="model-lib-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:2000;backdrop-filter:blur(4px);" onclick="if(event.target===this)closeModelLibrary()">
-  <div id="model-lib-modal" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:860px;max-width:96vw;height:580px;max-height:92vh;background:var(--bg-panel);border-radius:14px;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 24px 80px rgba(0,0,0,.5);">
+  <div id="model-lib-modal" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:900px;max-width:97vw;height:600px;max-height:93vh;background:var(--bg-panel);border-radius:14px;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 24px 80px rgba(0,0,0,.5);">
     <!-- Header -->
-    <div style="display:flex;align-items:center;padding:16px 20px 14px;border-bottom:1px solid var(--border);flex-shrink:0;">
-      <span style="font-size:18px;font-weight:700;color:var(--text-primary);">📦 内置模型库</span>
-      <span style="margin-left:10px;font-size:12px;color:var(--text-hint);">点击预览，双击加载</span>
-      <button onclick="closeModelLibrary()" style="margin-left:auto;background:none;border:none;cursor:pointer;font-size:20px;color:var(--text-hint);line-height:1;padding:2px 6px;">×</button>
+    <div style="display:flex;align-items:center;padding:15px 20px 13px;border-bottom:1px solid var(--border);flex-shrink:0;gap:10px;">
+      <span style="font-size:17px;font-weight:700;color:var(--text-primary);">📦 内置模型库</span>
+      <span id="mlib-page-label" style="font-size:12px;color:var(--text-hint);"></span>
+      <button onclick="closeModelLibrary()" style="margin-left:auto;background:none;border:none;cursor:pointer;font-size:22px;color:var(--text-hint);line-height:1;padding:0 4px;">×</button>
     </div>
-    <!-- Body: sidebar list + preview -->
+    <!-- Body: 4×4 grid + right preview panel -->
     <div style="display:flex;flex:1;overflow:hidden;">
-      <!-- Left: model grid -->
-      <div style="width:260px;flex-shrink:0;border-right:1px solid var(--border);overflow-y:auto;padding:12px;">
-        <div id="mlib-grid" style="display:flex;flex-direction:column;gap:6px;"></div>
+      <!-- Left: grid + pagination -->
+      <div style="flex:1;display:flex;flex-direction:column;overflow:hidden;padding:14px 14px 10px;">
+        <div id="mlib-grid" style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;flex:1;align-content:start;overflow-y:auto;"></div>
+        <!-- Pagination -->
+        <div id="mlib-pagination" style="display:flex;align-items:center;justify-content:center;gap:8px;padding-top:10px;flex-shrink:0;">
+          <button id="mlib-prev" onclick="mlibPageChange(-1)" style="padding:5px 14px;border:1px solid var(--border);border-radius:6px;background:var(--bg-input);color:var(--text-primary);cursor:pointer;font-size:13px;">‹</button>
+          <span id="mlib-page-info" style="font-size:12px;color:var(--text-hint);min-width:60px;text-align:center;"></span>
+          <button id="mlib-next" onclick="mlibPageChange(1)" style="padding:5px 14px;border:1px solid var(--border);border-radius:6px;background:var(--bg-input);color:var(--text-primary);cursor:pointer;font-size:13px;">›</button>
+        </div>
       </div>
-      <!-- Right: preview + info -->
-      <div style="flex:1;display:flex;flex-direction:column;overflow:hidden;">
+      <!-- Right: 3D preview (hidden until card clicked) -->
+      <div id="mlib-preview-panel" style="width:0;flex-shrink:0;border-left:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden;transition:width .2s ease;">
         <div style="flex:1;position:relative;background:#0d1117;">
           <canvas id="mlib-canvas" style="width:100%;height:100%;display:block;"></canvas>
-          <div id="mlib-hint" style="position:absolute;bottom:12px;left:50%;transform:translateX(-50%);font-size:11px;color:rgba(255,255,255,.35);pointer-events:none;">拖动旋转 · 滚轮缩放</div>
+          <button onclick="closeMlibPreview()" style="position:absolute;top:8px;right:8px;background:rgba(0,0,0,.5);border:none;color:#fff;border-radius:6px;padding:3px 9px;cursor:pointer;font-size:13px;">✕</button>
+          <div style="position:absolute;bottom:10px;left:50%;transform:translateX(-50%);font-size:10px;color:rgba(255,255,255,.3);pointer-events:none;white-space:nowrap;">拖动旋转 · 滚轮缩放</div>
         </div>
-        <!-- Info bar -->
-        <div style="padding:14px 18px;border-top:1px solid var(--border);display:flex;align-items:center;gap:12px;flex-shrink:0;">
-          <div style="flex:1;">
-            <div id="mlib-name" style="font-size:15px;font-weight:600;color:var(--text-primary);">—</div>
-            <div id="mlib-desc" style="font-size:12px;color:var(--text-hint);margin-top:3px;">选择左侧模型预览</div>
-          </div>
-          <button id="mlib-load-btn" onclick="loadSelectedBuiltinModel()" disabled style="padding:8px 22px;background:var(--blue);color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;opacity:.4;transition:opacity .15s;">
+        <div style="padding:12px 16px;border-top:1px solid var(--border);flex-shrink:0;">
+          <div id="mlib-name" style="font-size:14px;font-weight:600;color:var(--text-primary);margin-bottom:3px;">—</div>
+          <div id="mlib-desc" style="font-size:11px;color:var(--text-hint);margin-bottom:10px;"></div>
+          <button id="mlib-load-btn" onclick="loadSelectedBuiltinModel()" style="width:100%;padding:8px;background:var(--blue);color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;">
             加载此模型
           </button>
         </div>
@@ -1961,49 +1967,82 @@ async function loadModelLibrary() {
   } catch (e) { /* server not ready */ }
 }
 
+const MLIB_PER_PAGE = 16;
+let mlibPage = 0;
+
 function openModelLibrary() {
   document.getElementById('model-lib-overlay').style.display = 'block';
+  closeMlibPreview();
   if (mlibModels.length === 0) {
-    loadModelLibrary().then(() => { buildMlibSidebar(); initMlibRenderer(); });
+    loadModelLibrary().then(() => buildMlibGrid());
   } else {
-    buildMlibSidebar();
-    initMlibRenderer();
+    buildMlibGrid();
   }
 }
 
 function closeModelLibrary() {
   document.getElementById('model-lib-overlay').style.display = 'none';
+  closeMlibPreview();
   if (mlibAnimId) { cancelAnimationFrame(mlibAnimId); mlibAnimId = null; }
   if (mlibRenderer) { mlibRenderer.dispose(); mlibRenderer = null; mlibScene = null; mlibCamera = null; mlibMesh = null; }
 }
 
-function buildMlibSidebar() {
-  const grid = document.getElementById('mlib-grid');
-  if (!grid) return;
-  grid.innerHTML = '';
-  mlibModels.forEach(m => {
-    const row = document.createElement('div');
-    row.className = 'mlib-row';
-    row.dataset.id = m.id;
-    row.innerHTML = `<div class="mlib-row-icon">${m.icon}</div><div><div class="mlib-row-name">${m.name}</div><div class="mlib-row-desc">${m.desc}</div></div>`;
-    row.onclick = () => selectMlibModel(m, row);
-    row.ondblclick = () => { selectMlibModel(m, row); loadSelectedBuiltinModel(); };
-    grid.appendChild(row);
-  });
-  if (mlibModels.length > 0) {
-    const firstRow = grid.querySelector('.mlib-row');
-    if (firstRow) selectMlibModel(mlibModels[0], firstRow);
-  }
+function closeMlibPreview() {
+  const panel = document.getElementById('mlib-preview-panel');
+  if (panel) panel.style.width = '0';
+  document.querySelectorAll('.mlib-card').forEach(c => c.classList.remove('active'));
+  mlibSelected = null;
 }
 
-function selectMlibModel(model, rowEl) {
+function buildMlibGrid() {
+  const grid = document.getElementById('mlib-grid');
+  if (!grid) return;
+  const totalPages = Math.max(1, Math.ceil(mlibModels.length / MLIB_PER_PAGE));
+  mlibPage = Math.min(mlibPage, totalPages - 1);
+  const start = mlibPage * MLIB_PER_PAGE;
+  const pageModels = mlibModels.slice(start, start + MLIB_PER_PAGE);
+
+  grid.innerHTML = '';
+  pageModels.forEach((m, i) => {
+    const card = document.createElement('div');
+    card.className = 'mlib-card';
+    card.dataset.id = m.id;
+    card.innerHTML = `<div class="mlib-card-icon">${m.icon}</div><div class="mlib-card-name">${m.name}</div><div class="mlib-card-desc">${m.desc}</div>`;
+    card.onclick = () => selectMlibModel(m, card);
+    grid.appendChild(card);
+  });
+
+  // Pagination
+  const pageInfo = document.getElementById('mlib-page-info');
+  const prevBtn = document.getElementById('mlib-prev');
+  const nextBtn = document.getElementById('mlib-next');
+  const paginationEl = document.getElementById('mlib-pagination');
+  if (pageInfo) pageInfo.textContent = `第 ${mlibPage + 1} / ${totalPages} 页`;
+  if (prevBtn) prevBtn.disabled = mlibPage === 0;
+  if (nextBtn) nextBtn.disabled = mlibPage >= totalPages - 1;
+  if (paginationEl) paginationEl.style.display = totalPages > 1 ? 'flex' : 'none';
+
+  const label = document.getElementById('mlib-page-label');
+  if (label) label.textContent = `${mlibModels.length} 个模型`;
+}
+
+function mlibPageChange(delta) {
+  const totalPages = Math.max(1, Math.ceil(mlibModels.length / MLIB_PER_PAGE));
+  mlibPage = Math.max(0, Math.min(totalPages - 1, mlibPage + delta));
+  closeMlibPreview();
+  buildMlibGrid();
+}
+
+function selectMlibModel(model, cardEl) {
   mlibSelected = model;
-  document.querySelectorAll('.mlib-row').forEach(r => r.classList.remove('active'));
-  rowEl.classList.add('active');
+  document.querySelectorAll('.mlib-card').forEach(c => c.classList.remove('active'));
+  cardEl.classList.add('active');
   document.getElementById('mlib-name').textContent = model.icon + ' ' + model.name;
   document.getElementById('mlib-desc').textContent = model.desc;
-  const btn = document.getElementById('mlib-load-btn');
-  btn.disabled = false; btn.style.opacity = '1';
+  // Open preview panel
+  const panel = document.getElementById('mlib-preview-panel');
+  panel.style.width = '320px';
+  initMlibRenderer();
   loadMlibPreview(model.url);
 }
 
