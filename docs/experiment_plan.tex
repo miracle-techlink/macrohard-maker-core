@@ -1,0 +1,540 @@
+\documentclass[11pt,a4paper]{article}
+
+\usepackage{fontspec}
+\setmainfont{Noto Serif CJK SC}
+\setsansfont{Noto Sans CJK SC}
+\setmonofont{Noto Sans Mono}
+
+\usepackage{geometry}
+\geometry{left=2.2cm, right=2.2cm, top=2.5cm, bottom=2.5cm}
+
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{xcolor}
+\usepackage{amsmath,amssymb}
+\usepackage{hyperref}
+\usepackage{float}
+\usepackage{fancyhdr}
+\usepackage{enumitem}
+\usepackage{caption}
+\usepackage{longtable}
+
+\definecolor{pass}{HTML}{2E7D32}
+\definecolor{fail}{HTML}{C62828}
+\definecolor{accent}{HTML}{1565C0}
+\definecolor{note}{HTML}{F57F17}
+\definecolor{expert}{HTML}{6A1B9A}
+
+\pagestyle{fancy}
+\fancyhf{}
+\lhead{\small Part D --- Surface Geodesic Path Planning}
+\rhead{\small cf-path-planner v0.2}
+\cfoot{\thepage}
+
+\newcommand{\expertbox}[2]{%
+\vspace{0.5em}
+\noindent\fcolorbox{expert}{expert!5}{%
+\parbox{\dimexpr\textwidth-2\fboxsep-2\fboxrule}{%
+\textcolor{expert}{\textbf{Expert Review Point #1:}} #2
+}}
+\vspace{0.5em}
+}
+
+\newcommand{\accept}[1]{%
+\noindent\fcolorbox{pass}{pass!5}{%
+\parbox{\dimexpr\textwidth-2\fboxsep-2\fboxrule}{%
+\textcolor{pass}{\textbf{Acceptance Gate:}} #1
+}}
+}
+
+\title{\vspace{-1cm}\textsf{\textbf{曲面测地线路径规划 --- 实验方案}}\\
+\large Surface Geodesic Path Planning: Experiment Design \& Acceptance Plan\\[0.3em]
+\normalsize Phase 1--4 实验安排、验收标准与专家评审节点}
+\author{cf-path-planner / 连续碳纤维3D打印路径规划}
+\date{2026-03-31}
+
+\begin{document}
+\maketitle
+\thispagestyle{fancy}
+
+\tableofcontents
+\newpage
+
+% ============================================================
+\section{实验总览}
+
+\subsection{目标}
+
+用\textbf{曲面测地线}方法重新实现 Phase 1--4，替代旧的"3D 体积流线"方案。核心变化：
+\begin{itemize}[nosep]
+\item 路径从 3D 空间 $\to$ \textbf{零件表面}上
+\item 新增测地曲率约束 $\kappa_g < \kappa_{g,\max}$
+\item 新增应力-测地线混合优化 $(w_1, w_2)$
+\item G-code 输出 XZ+C 旋转轴坐标（非 XYZ 笛卡尔）
+\end{itemize}
+
+\subsection{Benchmark 几何}
+
+\begin{table}[H]
+\centering
+\begin{tabular}{llll}
+\toprule
+\textbf{Benchmark} & \textbf{几何} & \textbf{载荷} & \textbf{用途} \\
+\midrule
+A: 圆柱体 & $R_{out}=25, R_{in}=20, H=80$ mm & 顶面侧向力 500 N & 主验证 \\
+B: 锥筒体 & $R_{top}=15, R_{bot}=25, H=60$ mm & 顶面侧向力 300 N & 变半径测试 \\
+\bottomrule
+\end{tabular}
+\caption{Benchmark 几何参数}
+\end{table}
+
+Benchmark A 用于所有 Phase 的完整验证。Benchmark B 仅在 Phase 2 用于测试 Clairaut 关系在变半径曲面上的表现。
+
+\subsection{总体流程}
+
+\begin{table}[H]
+\centering
+\begin{tabularx}{\textwidth}{c l X l}
+\toprule
+\textbf{Phase} & \textbf{名称} & \textbf{核心任务} & \textbf{耗时估计} \\
+\midrule
+1 & FEA + 曲面应力场 & 求解 $\to$ 提取表面 $\to$ 应力投影 & $\sim$10s \\
+2 & 曲面路径生成 & 测地线方向 $\to$ 混合优化 $\to$ 曲面流线 & $\sim$60s \\
+3 & 机器坐标 + G-code & 路径 $\to$ $(X,Z,C)$ $\to$ G-code & $\sim$5s \\
+4 & 对比验证 & 4 种策略刚度/侧向力对比 & $\sim$20s \\
+\bottomrule
+\end{tabularx}
+\caption{四阶段总览}
+\end{table}
+
+
+% ============================================================
+\newpage
+\section{Phase 1: FEA + 曲面应力场}
+
+\subsection{实验步骤}
+
+\begin{enumerate}
+\item \textbf{网格生成}：用 Gmsh 生成圆柱体四面体网格，粗网格 (3 mm) + 细网格 (2 mm)
+
+\item \textbf{FEA 求解}：scikit-fem 线弹性求解
+\begin{itemize}[nosep]
+\item 材料：CF/PA6 等效各向同性 $E = 60$ GPa, $\nu = 0.3$
+\item 边界：底面 ($z=0$) 固定，顶面 ($z=H$) 施加侧向面力 $t_x = P / A_{\text{top}}$
+\item 输出：位移场、应力张量、主应力值/方向
+\end{itemize}
+
+\item \textbf{曲面提取}：从四面体网格提取外表面三角网格
+\begin{itemize}[nosep]
+\item 方法：统计每个三角面被几个四面体共享，只出现 1 次的是边界面
+\item 法线外翻：确保三角形法线指向外侧
+\item 输出：\texttt{SurfaceMesh} 对象（顶点、三角形、法线、邻接表）
+\end{itemize}
+
+\item \textbf{应力场投影}：将体积应力场投影到表面切平面
+\begin{itemize}[nosep]
+\item 对每个表面三角形，找最近的 $k=4$ 个体积单元
+\item IDW 插值主应力方向，投影到切平面：$\mathbf{d}_{\text{surf}} = \mathbf{d}_\sigma - (\mathbf{d}_\sigma \cdot \mathbf{n}) \mathbf{n}$
+\item 输出：每个表面三角形的应力方向 + von Mises 值
+\end{itemize}
+\end{enumerate}
+
+\subsection{验收标准}
+
+\begin{table}[H]
+\centering
+\begin{tabularx}{\textwidth}{X c c}
+\toprule
+\textbf{验收项} & \textbf{阈值} & \textbf{验证方法} \\
+\midrule
+网格收敛（位移）& $< 5\%$ 粗细差异 & 对比两次求解 $\delta_{\max}$ \\
+网格收敛（应力）& $< 10\%$ & 对比 $\sigma_{\text{VM,max}}$ \\
+表面提取完整性 & 封闭流形、无孤立面 & 检查 Euler 特征数 $V-E+F$ \\
+法线一致性 & $> 99\%$ 法线朝外 & 法线与质心-表面方向点积 $> 0$ \\
+应力投影正交性 & $|\mathbf{d}_{\text{surf}} \cdot \mathbf{n}| < 0.01$ & 逐三角形检查 \\
+高应力区覆盖 & 表面三角形 $> 95\%$ 有有效应力方向 & 统计 $\|\mathbf{d}\| > 0.1$ 的比例 \\
+\bottomrule
+\end{tabularx}
+\caption{Phase 1 验收清单}
+\end{table}
+
+\subsection{Output 文件}
+
+\begin{table}[H]
+\centering
+\begin{tabular}{l l l}
+\toprule
+\textbf{文件} & \textbf{格式} & \textbf{内容} \\
+\midrule
+\texttt{cylinder\_coarse.msh} & Gmsh & 粗网格 \\
+\texttt{cylinder\_fine.msh} & Gmsh & 细网格（后续所有 Phase 使用） \\
+\texttt{stress\_volume.npz} & NumPy & 体积应力场（与旧 Phase 1 兼容） \\
+\texttt{surface\_mesh.npz} & NumPy & 表面三角网格 (vertices, triangles, normals) \\
+\texttt{surface\_stress.npz} & NumPy & 表面应力方向场 (stress\_dir, von\_mises) \\
+\bottomrule
+\end{tabular}
+\caption{Phase 1 输出文件清单}
+\end{table}
+
+\expertbox{1}{%
+\textbf{检查点}：表面应力方向是否物理合理？\\
+--- 受拉侧 ($\theta \approx 0^\circ$) 的 $\sigma_1$ 应近似轴向\\
+--- 剪切侧 ($\theta \approx 90^\circ$) 应近似 $\pm 45^\circ$\\
+--- 方向场是否平滑连续（无突变/噪声）\\
+\textbf{可视化}：表面三角网格着色 von Mises + 方向箭头图（3D 渲染）
+}
+
+
+% ============================================================
+\newpage
+\section{Phase 2: 曲面路径生成}
+
+\subsection{实验步骤}
+
+\begin{enumerate}
+\item \textbf{测地线方向场计算}
+\begin{itemize}[nosep]
+\item 对每个表面三角形，计算局部半径 $r = \sqrt{x^2 + y^2}$
+\item 计算环向 $\mathbf{e}_\theta$ 和子午向 $\mathbf{e}_m$ 基向量（投影到切平面）
+\item 由 Clairaut 常数 $C$ 确定局部缠绕角 $\alpha = \arccos(C/r)$
+\item 测地线方向：$\mathbf{d}_g = \cos\alpha\,\mathbf{e}_\theta + \sin\alpha\,\mathbf{e}_m$
+\end{itemize}
+
+\item \textbf{应力-测地线混合}
+\begin{itemize}[nosep]
+\item 加权混合：$\mathbf{d}_{\text{opt}} = w_1 \mathbf{d}_\sigma + w_2 \mathbf{d}_g$，归一化
+\item 测试 4 组权重：$(1.0, 0.0)$, $(0.7, 0.3)$, $(0.5, 0.5)$, $(0.3, 0.7)$
+\end{itemize}
+
+\item \textbf{种子点生成}
+\begin{itemize}[nosep]
+\item 在高应力区（$> 10\%$ max VM）的表面三角形质心中选取
+\item 按 von Mises 降序排列，间距过滤 $> 3$ mm
+\item 目标：100--300 个种子点
+\end{itemize}
+
+\item \textbf{曲面流线积分}
+\begin{itemize}[nosep]
+\item 从种子点沿混合方向双向积分（Euler 法，步长 0.3--0.5 mm）
+\item 每步投影回曲面（最近三角形质心）
+\item 停止条件：离开曲面 / 应力低于阈值 / 超出最大步数
+\end{itemize}
+
+\item \textbf{后处理}
+\begin{itemize}[nosep]
+\item 路径长度过滤：$L > 10$ mm
+\item 间距过滤：与已有路径中位距离 $> 1.0$ mm
+\item Laplacian 平滑 + 最小转弯半径检查 $R_{\min} \geq 6$ mm
+\item 路径排序（贪心最近邻，最小空行程）
+\end{itemize}
+\end{enumerate}
+
+\subsection{验收标准}
+
+\begin{table}[H]
+\centering
+\begin{tabularx}{\textwidth}{X c c l}
+\toprule
+\textbf{验收项} & \textbf{阈值} & \textbf{权重配置} & \textbf{说明} \\
+\midrule
+路径数量 & $\geq 30$ & 所有 & 太少说明种子/积分有问题 \\
+覆盖率（高应力区表面）& $\geq 70\%$ & 所有 & 路径覆盖表面的比例 \\
+转弯半径违规率 & $< 10\%$ & 所有 & 点级别违规率 \\
+\textbf{应力偏差} & $< 15^\circ$ & stress\_only & 纯应力驱动应最对齐 \\
+\textbf{应力偏差} & $< 25^\circ$ & balanced & 折中配置允许更大偏差 \\
+\textbf{测地曲率} $\kappa_g$ & $< 0.002$ mm$^{-1}$ & geodesic\_bias & 偏测地线配置应接近 0 \\
+\textbf{测地曲率} $\kappa_g$ & $< 0.005$ mm$^{-1}$ & balanced & 折中允许更大偏离 \\
+路径在表面上 & Z 方差 $< 0.5$ mm (per path) & 所有 & 确保路径贴合曲面 \\
+\bottomrule
+\end{tabularx}
+\caption{Phase 2 验收清单}
+\end{table}
+
+\textcolor{accent}{\textbf{关键指标}}：Phase 2 的核心创新在于 $\kappa_g$ 和应力偏差的\textbf{权衡曲线}——随着 $w_2$ 增大，$\kappa_g$ 应单调下降，应力偏差应单调上升。如果不是单调关系，说明混合算法有 bug。
+
+\subsection{Output 文件}
+
+\begin{table}[H]
+\centering
+\begin{tabular}{l l l}
+\toprule
+\textbf{文件} & \textbf{格式} & \textbf{内容} \\
+\midrule
+\texttt{paths\_stress\_only.npz} & NumPy & $(w_1=1, w_2=0)$ 路径集 \\
+\texttt{paths\_balanced.npz} & NumPy & $(w_1=0.5, w_2=0.5)$ 路径集 \\
+\texttt{paths\_geodesic\_bias.npz} & NumPy & $(w_1=0.3, w_2=0.7)$ 路径集 \\
+\texttt{paths\_geodesic\_only.npz} & NumPy & $(w_1=0, w_2=1)$ 路径集 \\
+\texttt{tradeoff\_curve.json} & JSON & 4 组权重的 ($\kappa_g$, 应力偏差, 覆盖率) \\
+\bottomrule
+\end{tabular}
+\caption{Phase 2 输出文件清单}
+\end{table}
+
+\expertbox{2}{%
+\textbf{检查点 A}：路径是否真的在曲面上？\\
+--- 可视化路径叠加在半透明表面网格上，确认无"飞线"\\
+--- 检查每条路径到最近表面的最大距离 $< 1$ mm\\[0.5em]
+\textbf{检查点 B}：权衡曲线是否合理？\\
+--- 绘制 (应力偏差 vs $\kappa_g$) 散点图，4 个配置应从左上到右下单调\\
+--- 如果 balanced 配置的 $\kappa_g$ 比 geodesic\_only 还大，说明混合算法有问题\\[0.5em]
+\textbf{检查点 C (仅 Benchmark B 锥筒体)}：\\
+--- Clairaut 关系是否正确？缠绕角 $\alpha$ 是否随 $r(z)$ 变化？\\
+--- 在小半径端 ($r=15$ mm) $\alpha$ 应比大半径端 ($r=25$ mm) 更趋轴向\\[0.5em]
+\textbf{可视化}：\\
+1. 3D 渲染：表面着 VM 色 + 路径线（按 $\alpha$ 着色）\\
+2. 展开图：$(\theta, z)$ 平面上的路径，直观判断螺旋角是否合理\\
+3. 权衡曲线图：$x=$ 应力偏差, $y=\kappa_g$, 4 个点 + 连线
+}
+
+
+% ============================================================
+\newpage
+\section{Phase 3: 机器坐标 + G-code}
+
+\subsection{实验步骤}
+
+\begin{enumerate}
+\item \textbf{坐标转换}：表面路径 $(x,y,z)$ $\to$ 机器坐标 $(X,Z,C)$
+\begin{itemize}[nosep]
+\item $X = \sqrt{x^2 + y^2}$ （径向位置 = 打印头距轴心距离）
+\item $Z = z$
+\item $C = \text{atan2}(y, x)$，连续展开（跨 $\pm 180^\circ$ 时不跳变）
+\end{itemize}
+
+\item \textbf{张力预设}：基于局部测地曲率
+\begin{itemize}[nosep]
+\item $T = T_{\text{base}} \cdot \max\big(0.3,\; 1 - \kappa_g / \kappa_{g,\max}\big)$
+\item $\kappa_g$ 大 $\to$ 降低张力；$\kappa_g \approx 0$ $\to$ 正常张力
+\end{itemize}
+
+\item \textbf{G-code 生成}
+\begin{itemize}[nosep]
+\item 格式：\texttt{G1 X\{x\} Z\{z\} C\{c\} F\{feed\}}（3 轴同步插补）
+\item 纤维控制：\texttt{T1} (激活), \texttt{M700 T\{tension\}} (张力), \texttt{M701} (剪切)
+\item 空行程：\texttt{G0 X Z C F3000}
+\end{itemize}
+
+\item \textbf{G-code 验证}
+\begin{itemize}[nosep]
+\item 坐标范围检查：$X \in [15, 30]$ mm（内外壁范围）
+\item C 轴连续性：相邻点 $|\Delta C| < 30^\circ$（无大跳变）
+\item 运动学检查：线速度 $v = \sqrt{V_X^2 + V_Z^2 + (R \omega_C)^2} <$ feed rate
+\end{itemize}
+\end{enumerate}
+
+\subsection{验收标准}
+
+\begin{table}[H]
+\centering
+\begin{tabularx}{\textwidth}{X c c}
+\toprule
+\textbf{验收项} & \textbf{阈值} & \textbf{验证方法} \\
+\midrule
+G-code 语法合法性 & 0 errors & 解析每行 \\
+坐标范围 & $X \in [R_{in}-2, R_{out}+2]$, $Z \in [-2, H+5]$ & 逐行检查 \\
+C 轴连续性 & 相邻 $|\Delta C| < 30^\circ$ & 逐段检查 \\
+空行程比 & $< 0.5$（travel / print 距离比） & 统计 \\
+剪切次数 $=$ 路径数 & 精确相等 & 统计 M701 数量 \\
+纤维总长 & $> 0$，与 Phase 2 路径长度一致 ($\pm 5\%$) & 对比 \\
+打印时间估算 & $>$ 0 min & 按 feed rate 计算 \\
+\bottomrule
+\end{tabularx}
+\caption{Phase 3 验收清单}
+\end{table}
+
+\subsection{Output 文件}
+
+\begin{table}[H]
+\centering
+\begin{tabular}{l l l}
+\toprule
+\textbf{文件} & \textbf{格式} & \textbf{内容} \\
+\midrule
+\texttt{machine\_paths.npz} & NumPy & $(X, Z, C, \text{tilt}, \text{tension})$ per path \\
+\texttt{cylinder\_surface.gcode} & G-code & 完整打印指令 \\
+\texttt{gcode\_stats.json} & JSON & 行数、距离、时间、剪切次数 \\
+\bottomrule
+\end{tabular}
+\caption{Phase 3 输出文件清单}
+\end{table}
+
+\expertbox{3}{%
+\textbf{检查点 A}：C 轴是否连续？\\
+--- 绘制 $C(t)$ 曲线，应平滑无大跳变\\
+--- 螺旋路径的 $C$ 应线性递增\\[0.5em]
+\textbf{检查点 B}：运动学可行性\\
+--- 计算每段的瞬时线速度，不应超过 feed rate\\
+--- 计算 C 轴角速度，不应超过电机极限（典型 $< 60$ rpm）\\[0.5em]
+\textbf{检查点 C}：G-code 回放可视化\\
+--- 3D 渲染打印路径（红）+ 空行程（灰）\\
+--- C 轴展开图：$(\theta, z)$ 轨迹回放\\[0.5em]
+\textbf{可视化}：\\
+1. XZ 平面投影（侧视图）\\
+2. $C$-$Z$ 展开图（展开的筒壁表面）\\
+3. G-code 3D 回放动画
+}
+
+
+% ============================================================
+\newpage
+\section{Phase 4: 对比验证}
+
+\subsection{实验设计}
+
+比较 \textbf{4 种路径策略}在同一几何/载荷下的力学性能和制造可行性：
+
+\begin{table}[H]
+\centering
+\begin{tabularx}{\textwidth}{c l X l}
+\toprule
+\textbf{Case} & \textbf{策略} & \textbf{说明} & \textbf{E 近似} \\
+\midrule
+1 & 应力驱动测地线 & 本文方案 $(w_1=0.5, w_2=0.5)$ & $E_1 = 60$ GPa \\
+2 & 固定 $\pm 45^\circ$ 螺旋 & 传统纤维缠绕标准角度 & $E_{\text{avg}}$ = 31.8 GPa \\
+3 & 固定 $90^\circ$ 轴向 & 纤维沿轴向（拉伸最优） & $E_1 = 60$ GPa \\
+4 & Onyx 短切纤维 & 各向同性对照组 & $E = 4.2$ GPa \\
+\bottomrule
+\end{tabularx}
+\caption{Phase 4 对比配置}
+\end{table}
+
+\textcolor{accent}{\textbf{注意}}：对等效各向同性近似的局限性——Case 1 的 $E$ 应反映纤维方向与载荷方向的对齐程度，用 $E_{\text{eff}} = E_1 \cos^4\beta + E_2 \sin^4\beta$ 计算更准确（$\beta$ = 纤维与应力的偏差角）。
+
+\subsection{性能指标}
+
+\begin{table}[H]
+\centering
+\begin{tabularx}{\textwidth}{l X l}
+\toprule
+\textbf{指标} & \textbf{含义} & \textbf{计算方法} \\
+\midrule
+$\delta_{\max}$ & 最大位移 & FEA 求解结果 \\
+刚度比 & 相对于 Case 1 的刚度 & $\delta_{\text{ref}} / \delta_i$ \\
+$\sigma_{\text{VM,max}}$ & 最大 von Mises 应力 & FEA 后处理 \\
+平均 $\kappa_g$ & 平均测地曲率 & Phase 2 统计 \\
+$F_{\text{lat,max}}$ & 最大侧向力 & $T \cdot \kappa_{g,\max}$ \\
+纤维总长 & 材料用量 & Phase 2 统计 \\
+剪切次数 & 纤维断续次数 & Phase 3 统计 \\
+\bottomrule
+\end{tabularx}
+\caption{Phase 4 性能指标定义}
+\end{table}
+
+\subsection{验收标准}
+
+\begin{table}[H]
+\centering
+\begin{tabularx}{\textwidth}{X c c}
+\toprule
+\textbf{验收项} & \textbf{阈值} & \textbf{说明} \\
+\midrule
+刚度 vs $\pm 45^\circ$缠绕 & $\geq 0.9\times$ & 应力驱动不应比标准缠绕差 \\
+刚度 vs Onyx & $\geq 5\times$ & 连续纤维远强于短切 \\
+$\kappa_g$ vs 固定角度 & $\leq 1.5\times$ & 应力驱动的 $\kappa_g$ 不应远超几何路径 \\
+$F_{\text{lat}}$ 在安全范围 & $< \mu F_n$ & 所有路径点均不脱粘 \\
+四组 FEA 均收敛 & 收敛 & 求解器无报错 \\
+\bottomrule
+\end{tabularx}
+\caption{Phase 4 验收清单}
+\end{table}
+
+\subsection{Output 文件}
+
+\begin{table}[H]
+\centering
+\begin{tabular}{l l l}
+\toprule
+\textbf{文件} & \textbf{格式} & \textbf{内容} \\
+\midrule
+\texttt{comparison\_table.json} & JSON & 4 组配置的所有指标 \\
+\texttt{comparison\_chart.png} & PNG & 刚度柱状图 + 侧向力对比 \\
+\texttt{tradeoff\_pareto.png} & PNG & 刚度 vs 侧向力 Pareto 前沿 \\
+\bottomrule
+\end{tabular}
+\caption{Phase 4 输出文件清单}
+\end{table}
+
+\expertbox{4}{%
+\textbf{检查点 A}：结果物理合理性\\
+--- 应力值在所有 Case 中应相同（静定结构，应力与 $E$ 无关）\\
+--- 位移应严格 $\propto 1/E_{\text{eff}}$\\
+--- 如果不满足，检查边界条件是否一致\\[0.5em]
+\textbf{检查点 B}：创新点验证\\
+--- 应力驱动测地线 vs 固定 $\pm 45^\circ$：刚度是否有提升？\\
+--- 如果提升很小 ($< 5\%$)，说明圆柱 benchmark 太简单，需要更复杂载荷\\
+--- 建议追加\textbf{弯+扭组合载荷}，此时固定角度不再最优\\[0.5em]
+\textbf{检查点 C}：侧向力分析是否有说服力\\
+--- 纯应力驱动 ($w_1=1$) 的 $\kappa_g$ 是否真的比 balanced ($w_1=0.5$) 大？\\
+--- 这是验证混合优化价值的关键证据\\[0.5em]
+\textbf{可视化}：\\
+1. 柱状图：4 种策略的刚度对比\\
+2. 散点图：(刚度, $\kappa_g$) 二维图，标注 4 种策略\\
+3. Pareto 前沿：连接非支配解，展示 trade-off
+}
+
+
+% ============================================================
+\newpage
+\section{实验报告结构}
+
+最终实验报告使用与本文档相同的 \LaTeX{} 模板，包含：
+
+\begin{enumerate}
+\item \textbf{封面 + 目录}
+\item \textbf{Phase 1 结果}：网格收敛表、表面提取统计、应力场可视化
+\item \textbf{Phase 2 结果}：4 组权重的路径统计表、权衡曲线图、3D 路径可视化
+\item \textbf{Phase 3 结果}：G-code 统计、$C$-$Z$ 展开图、运动学检查
+\item \textbf{Phase 4 结果}：4 策略对比表、刚度柱状图、Pareto 前沿
+\item \textbf{专家评审意见 + 改进记录}
+\item \textbf{结论 + 下一步}
+\end{enumerate}
+
+所有可视化使用 matplotlib 生成（不依赖 PyVista），确保可在无 GPU 环境运行。
+
+\subsection{报告质量检查清单}
+
+\begin{table}[H]
+\centering
+\begin{tabularx}{\textwidth}{X c}
+\toprule
+\textbf{检查项} & \textbf{要求} \\
+\midrule
+所有数值有单位 & mm, MPa, N, $^\circ$, mm$^{-1}$ \\
+所有表格有 caption & Table N: ... \\
+所有图有 caption + 子图标注 & Figure N: (a) ... (b) ... \\
+PASS/FAIL 有颜色标注 & \textcolor{pass}{PASS} / \textcolor{fail}{FAIL} \\
+每个 Phase 有验收结论框 & ALL PASSED / SOME FAILED \\
+专家评审意见单独标注 & 紫色边框 \\
+\bottomrule
+\end{tabularx}
+\caption{报告质量清单}
+\end{table}
+
+
+% ============================================================
+\section{风险与预案}
+
+\begin{table}[H]
+\centering
+\begin{tabularx}{\textwidth}{l X X}
+\toprule
+\textbf{风险} & \textbf{表现} & \textbf{预案} \\
+\midrule
+表面提取失败 & 非流形、孔洞 & 用 meshio 检查，必要时用 Gmsh 直接导出表面 \\
+应力投影噪声大 & 方向场不连续 & 增大 $k$ 值（8 或 16），或加高斯平滑 \\
+流线积分跳离表面 & 路径"飞线" & 每步强制投影回最近三角形 \\
+$\kappa_g$ 计算不准 & 圆柱上应为 0 但不是 & 用解析公式验证圆柱特例 \\
+权衡曲线不单调 & 混合算法 bug & 检查方向对齐符号处理（$\pm\mathbf{d}$） \\
+圆柱太简单无差异 & 4 种策略结果太接近 & 追加弯+扭组合载荷 benchmark \\
+\bottomrule
+\end{tabularx}
+\caption{风险预案}
+\end{table}
+
+
+\vfill
+\noindent\rule{\textwidth}{0.5pt}
+{\small 2026-03-31 \quad cf-path-planner v0.2.0 \quad 曲面测地线路径规划实验方案}
+
+\end{document}

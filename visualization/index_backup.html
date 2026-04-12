@@ -1,0 +1,927 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CF-Path-Planner Visualization</title>
+<script src="lib/three.min.js"></script>
+<script src="lib/OrbitControls.js"></script>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+:root {
+  --bg: #1a1a2e; --panel: #16213e; --accent: #0f3460;
+  --accent-light: #1a5276; --text: #e0e0e0; --text-dim: #8899aa;
+  --highlight: #4fc3f7; --danger: #ef5350; --success: #66bb6a;
+}
+body { font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--text); overflow: hidden; height: 100vh; }
+#app { display: grid; grid-template-rows: 48px 1fr 54px; grid-template-columns: 220px 1fr 240px; height: 100vh; }
+
+/* Header */
+#header { grid-column: 1 / -1; background: var(--panel); display: flex; align-items: center; padding: 0 16px; gap: 16px; border-bottom: 1px solid rgba(255,255,255,0.06); z-index: 10; }
+#header h1 { font-size: 16px; font-weight: 600; color: var(--highlight); white-space: nowrap; }
+#header h1 span { color: var(--text-dim); font-weight: 400; font-size: 13px; margin-left: 8px; }
+.header-sep { width: 1px; height: 24px; background: rgba(255,255,255,0.1); }
+select, button, input[type=range] { font-family: inherit; }
+select { background: var(--accent); color: var(--text); border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; padding: 4px 10px; font-size: 13px; cursor: pointer; outline: none; }
+select:hover { border-color: var(--highlight); }
+
+/* Left Sidebar */
+#sidebar { background: var(--panel); border-right: 1px solid rgba(255,255,255,0.06); padding: 12px; overflow-y: auto; }
+.section-title { font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: var(--text-dim); margin: 12px 0 8px; }
+.section-title:first-child { margin-top: 0; }
+.tab-group { display: flex; flex-direction: column; gap: 4px; }
+.tab-btn { background: transparent; border: 1px solid rgba(255,255,255,0.06); color: var(--text); padding: 8px 12px; border-radius: 8px; cursor: pointer; font-size: 13px; text-align: left; transition: all 0.2s; display: flex; align-items: center; gap: 8px; }
+.tab-btn:hover { background: rgba(79,195,247,0.08); border-color: rgba(79,195,247,0.2); }
+.tab-btn.active { background: rgba(79,195,247,0.15); border-color: var(--highlight); color: var(--highlight); }
+.tab-icon { font-size: 16px; width: 20px; text-align: center; }
+.tab-label-zh { font-size: 11px; color: var(--text-dim); }
+
+/* Viewport */
+#viewport { position: relative; overflow: hidden; background: var(--bg); }
+#three-canvas { width: 100%; height: 100%; display: block; }
+#loading-overlay { position: absolute; inset: 0; background: rgba(26,26,46,0.92); display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 20; transition: opacity 0.4s; }
+#loading-overlay.hidden { opacity: 0; pointer-events: none; }
+.spinner { width: 40px; height: 40px; border: 3px solid rgba(79,195,247,0.2); border-top-color: var(--highlight); border-radius: 50%; animation: spin 0.8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+#loading-text { margin-top: 12px; color: var(--text-dim); font-size: 13px; }
+#no-data-msg { position: absolute; inset: 0; display: none; align-items: center; justify-content: center; color: var(--text-dim); font-size: 15px; z-index: 5; }
+
+/* Right Panel */
+#info-panel { background: var(--panel); border-left: 1px solid rgba(255,255,255,0.06); padding: 12px; overflow-y: auto; font-size: 12px; }
+.info-card { background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06); border-radius: 8px; padding: 10px; margin-bottom: 8px; }
+.info-card h3 { font-size: 12px; color: var(--highlight); margin-bottom: 6px; font-weight: 600; }
+.info-row { display: flex; justify-content: space-between; padding: 3px 0; }
+.info-label { color: var(--text-dim); }
+.info-value { color: var(--text); font-weight: 500; font-variant-numeric: tabular-nums; }
+
+/* Bottom Controls */
+#controls { grid-column: 1 / -1; background: var(--panel); border-top: 1px solid rgba(255,255,255,0.06); display: flex; align-items: center; padding: 0 16px; gap: 16px; }
+.ctrl-group { display: flex; align-items: center; gap: 6px; }
+.ctrl-label { font-size: 11px; color: var(--text-dim); white-space: nowrap; }
+input[type=range] { -webkit-appearance: none; width: 80px; height: 4px; background: rgba(255,255,255,0.1); border-radius: 2px; outline: none; }
+input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 14px; height: 14px; background: var(--highlight); border-radius: 50%; cursor: pointer; }
+.btn { background: var(--accent); color: var(--text); border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; padding: 5px 12px; font-size: 12px; cursor: pointer; transition: all 0.15s; white-space: nowrap; }
+.btn:hover { background: var(--accent-light); border-color: var(--highlight); }
+.btn-icon { font-size: 14px; }
+.ctrl-sep { width: 1px; height: 24px; background: rgba(255,255,255,0.08); }
+
+/* Gcode animation controls */
+#gcode-controls { display: none; align-items: center; gap: 8px; }
+#gcode-progress { width: 160px; }
+
+/* Color bar */
+#colorbar { position: absolute; right: 12px; bottom: 12px; width: 24px; height: 180px; border-radius: 4px; overflow: hidden; border: 1px solid rgba(255,255,255,0.1); z-index: 5; display: none; }
+#colorbar canvas { width: 100%; height: 100%; }
+#colorbar-max, #colorbar-min { position: absolute; right: 30px; font-size: 10px; color: var(--text-dim); white-space: nowrap; }
+#colorbar-max { top: -2px; }
+#colorbar-min { bottom: -2px; }
+#colorbar-label { position: absolute; right: 30px; top: 50%; transform: translateY(-50%); font-size: 10px; color: var(--text-dim); }
+
+/* Axis labels */
+#axis-label { position: absolute; left: 12px; bottom: 12px; z-index: 5; }
+</style>
+</head>
+<body>
+<div id="app">
+  <!-- Header -->
+  <div id="header">
+    <h1>CF-Path-Planner <span>3D Visualization</span></h1>
+    <div class="header-sep"></div>
+    <select id="model-select">
+      <option value="live" selected>Live / 实时计算</option>
+      <option value="structured">Cylinder / 结构化缠绕 (预计算)</option>
+      <option value="surface_geodesic">Cylinder / 曲面测地线 (预计算)</option>
+    </select>
+    <div class="header-sep"></div>
+    <button id="btn-compute" style="background:var(--highlight);color:#000;border:none;padding:6px 16px;border-radius:4px;cursor:pointer;font-weight:bold;">Compute / 计算</button>
+    <select id="compute-model" style="padding:4px;background:var(--accent);color:var(--text);border:1px solid rgba(255,255,255,0.1);border-radius:4px;">
+      <option value="cylinder">Cylinder 圆柱</option>
+      <option value="cone">Cone 锥体</option>
+    </select>
+    <select id="compute-strategy" style="padding:4px;background:var(--accent);color:var(--text);border:1px solid rgba(255,255,255,0.1);border-radius:4px;">
+      <option value="multilayer_stress">Multi-layer Stress / 多壳层应力驱动</option>
+      <option value="multilayer_default">Multi-layer Default / 多壳层默认</option>
+      <option value="stress_driven">Stress-driven / 应力驱动(单层)</option>
+      <option value="multi_angle">Multi-angle / 多角度(单层)</option>
+    </select>
+    <span id="compute-status" style="font-size:11px;color:var(--text-dim);"></span>
+  </div>
+
+  <!-- Left Sidebar -->
+  <div id="sidebar">
+    <div class="section-title">Visualization Mode / 可视化模式</div>
+    <div class="tab-group">
+      <button class="tab-btn active" data-mode="stress">
+        <span class="tab-icon">&#9632;</span>
+        <div><div>Stress Field</div><div class="tab-label-zh">Von Mises 应力场</div></div>
+      </button>
+      <button class="tab-btn" data-mode="paths">
+        <span class="tab-icon">&#9135;</span>
+        <div><div>Fiber Paths</div><div class="tab-label-zh">纤维路径</div></div>
+      </button>
+      <button class="tab-btn" data-mode="topo">
+        <span class="tab-icon">&#9724;</span>
+        <div><div>Topology Opt.</div><div class="tab-label-zh">拓扑优化密度场</div></div>
+      </button>
+      <button class="tab-btn" data-mode="gcode">
+        <span class="tab-icon">&#9654;</span>
+        <div><div>G-code Replay</div><div class="tab-label-zh">G代码回放</div></div>
+      </button>
+      <button class="tab-btn" data-mode="all">
+        <span class="tab-icon">&#9881;</span>
+        <div><div>Composite</div><div class="tab-label-zh">综合视图</div></div>
+      </button>
+    </div>
+
+    <div class="section-title">Display / 显示选项</div>
+    <div style="padding: 4px 0;">
+      <label style="display: flex; align-items: center; gap: 6px; font-size: 12px; cursor: pointer;">
+        <input type="checkbox" id="show-grid" checked> Grid / 网格
+      </label>
+    </div>
+    <div style="padding: 4px 0;">
+      <label style="display: flex; align-items: center; gap: 6px; font-size: 12px; cursor: pointer;">
+        <input type="checkbox" id="show-axes" checked> Axes / 坐标轴
+      </label>
+    </div>
+    <div style="padding: 4px 0;">
+      <label style="display: flex; align-items: center; gap: 6px; font-size: 12px; cursor: pointer;">
+        <input type="checkbox" id="show-directions" > Principal Dir / 主应力方向
+      </label>
+    </div>
+  </div>
+
+  <!-- Viewport -->
+  <div id="viewport">
+    <canvas id="three-canvas"></canvas>
+    <div id="loading-overlay">
+      <div class="spinner"></div>
+      <div id="loading-text">Loading data...</div>
+    </div>
+    <div id="no-data-msg">No data available for this view</div>
+    <div id="colorbar">
+      <canvas id="colorbar-canvas" width="24" height="180"></canvas>
+      <div id="colorbar-max"></div>
+      <div id="colorbar-min"></div>
+      <div id="colorbar-label"></div>
+    </div>
+    <div id="axis-label"></div>
+  </div>
+
+  <!-- Right Panel -->
+  <div id="info-panel">
+    <div class="section-title">Model Info / 模型信息</div>
+    <div class="info-card">
+      <h3 id="info-model-name">--</h3>
+      <div class="info-row"><span class="info-label">Elements / 单元数</span><span class="info-value" id="info-elements">--</span></div>
+    </div>
+
+    <div class="section-title">Stress / 应力</div>
+    <div class="info-card">
+      <div class="info-row"><span class="info-label">VM Max / 最大</span><span class="info-value" id="info-vm-max">--</span></div>
+      <div class="info-row"><span class="info-label">VM Min / 最小</span><span class="info-value" id="info-vm-min">--</span></div>
+      <div class="info-row"><span class="info-label">VM Mean / 平均</span><span class="info-value" id="info-vm-mean">--</span></div>
+    </div>
+
+    <div class="section-title">Fiber Paths / 纤维路径</div>
+    <div class="info-card">
+      <div class="info-row"><span class="info-label">Paths / 路径数</span><span class="info-value" id="info-n-paths">--</span></div>
+      <div class="info-row"><span class="info-label">Total / 路径总长</span><span class="info-value" id="info-total-length">--</span></div>
+    </div>
+
+    <div class="section-title">Topology / 拓扑优化</div>
+    <div class="info-card" id="topo-info-card">
+      <div class="info-row"><span class="info-label">Status / 状态</span><span class="info-value" id="info-topo-status">--</span></div>
+      <div class="info-row"><span class="info-label">Elements / 单元</span><span class="info-value" id="info-topo-elements">--</span></div>
+    </div>
+
+    <div class="section-title">G-code</div>
+    <div class="info-card">
+      <div class="info-row"><span class="info-label">Points / 点数</span><span class="info-value" id="info-gcode-pts">--</span></div>
+      <div class="info-row"><span class="info-label">Print / 打印段</span><span class="info-value" id="info-gcode-print">--</span></div>
+      <div class="info-row"><span class="info-label">Travel / 空走段</span><span class="info-value" id="info-gcode-travel">--</span></div>
+    </div>
+  </div>
+
+  <!-- Bottom Controls -->
+  <div id="controls">
+    <div class="ctrl-group">
+      <span class="ctrl-label">Opacity / 透明度</span>
+      <input type="range" id="opacity-slider" min="0.1" max="1" step="0.05" value="0.8">
+    </div>
+    <div class="ctrl-group">
+      <span class="ctrl-label">Size / 点大小</span>
+      <input type="range" id="size-slider" min="0.5" max="8" step="0.5" value="2.5">
+    </div>
+    <div class="ctrl-group">
+      <span class="ctrl-label">Colormap</span>
+      <select id="cmap-select">
+        <option value="jet">Jet</option>
+        <option value="viridis">Viridis</option>
+        <option value="coolwarm">Coolwarm</option>
+      </select>
+    </div>
+    <div class="ctrl-sep"></div>
+    <div id="gcode-controls">
+      <button class="btn" id="gcode-play"><span class="btn-icon">&#9654;</span></button>
+      <span class="ctrl-label">Speed</span>
+      <input type="range" id="gcode-speed" min="1" max="200" step="1" value="50">
+      <input type="range" id="gcode-progress" min="0" max="1000" step="1" value="1000">
+      <span class="ctrl-label" id="gcode-pct">100%</span>
+    </div>
+    <div style="flex:1"></div>
+    <button class="btn" id="btn-screenshot" title="Screenshot / 截图">Screenshot</button>
+    <button class="btn" id="btn-reset" title="Reset View / 重置视角">Reset</button>
+  </div>
+</div>
+
+<script>
+// ==================== App State ====================
+const state = {
+  model: 'live',
+  mode: 'stress',
+  data: {},  // { cantilever_stress: ..., cantilever_paths: ..., etc }
+  objects: { stress: null, paths: null, topo: null, gcode: null, directions: null },
+  gcodeAnim: { playing: false, frame: 0, speed: 50, total: 0 },
+};
+
+// ==================== Three.js Setup ====================
+const canvas = document.getElementById('three-canvas');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: true });
+renderer.setPixelRatio(window.devicePixelRatio);
+renderer.setClearColor(0x1a1a2e);
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 5000);
+camera.position.set(30, 25, 30);
+
+const controls = new THREE.OrbitControls(camera, canvas);
+controls.enableDamping = true;
+controls.dampingFactor = 0.08;
+controls.target.set(0, 0, 0);
+
+// Lights
+scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+dirLight.position.set(20, 30, 20);
+scene.add(dirLight);
+const dirLight2 = new THREE.DirectionalLight(0x4488ff, 0.3);
+dirLight2.position.set(-20, 10, -20);
+scene.add(dirLight2);
+
+// Grid
+const grid = new THREE.GridHelper(100, 50, 0x333355, 0x222244);
+scene.add(grid);
+
+// Axes
+const axes = new THREE.AxesHelper(8);
+scene.add(axes);
+
+// ==================== Colormaps ====================
+function jetColor(t) {
+  t = Math.max(0, Math.min(1, t));
+  let r, g, b;
+  if (t < 0.25) { r = 0; g = 4 * t; b = 1; }
+  else if (t < 0.5) { r = 0; g = 1; b = 1 - 4 * (t - 0.25); }
+  else if (t < 0.75) { r = 4 * (t - 0.5); g = 1; b = 0; }
+  else { r = 1; g = 1 - 4 * (t - 0.75); b = 0; }
+  return [r, g, b];
+}
+
+function viridisColor(t) {
+  t = Math.max(0, Math.min(1, t));
+  // Simplified viridis
+  const r = Math.max(0, Math.min(1, -0.2 + 1.5 * t * t));
+  const g = Math.max(0, Math.min(1, 0.1 + 0.9 * Math.sin(Math.PI * t * 0.9)));
+  const b = Math.max(0, Math.min(1, 0.55 - 0.5 * t + 0.4 * Math.sin(Math.PI * t)));
+  return [r, g, b];
+}
+
+function coolwarmColor(t) {
+  t = Math.max(0, Math.min(1, t));
+  const r = Math.max(0, Math.min(1, 0.3 + 0.7 * t));
+  const g = Math.max(0, Math.min(1, 0.3 + 0.4 * Math.sin(Math.PI * t)));
+  const b = Math.max(0, Math.min(1, 0.9 - 0.7 * t));
+  return [r, g, b];
+}
+
+function getColormap(name) {
+  if (name === 'viridis') return viridisColor;
+  if (name === 'coolwarm') return coolwarmColor;
+  return jetColor;
+}
+
+function drawColorbar(cmapName, vmin, vmax, label) {
+  const bar = document.getElementById('colorbar');
+  const cvs = document.getElementById('colorbar-canvas');
+  const ctx = cvs.getContext('2d');
+  const cmap = getColormap(cmapName);
+  const h = cvs.height;
+  for (let y = 0; y < h; y++) {
+    const t = 1 - y / h;
+    const [r, g, b] = cmap(t);
+    ctx.fillStyle = `rgb(${r*255|0},${g*255|0},${b*255|0})`;
+    ctx.fillRect(0, y, cvs.width, 1);
+  }
+  document.getElementById('colorbar-max').textContent = vmax.toExponential(2);
+  document.getElementById('colorbar-min').textContent = vmin.toExponential(2);
+  document.getElementById('colorbar-label').textContent = label || '';
+  bar.style.display = 'block';
+}
+
+function hideColorbar() { document.getElementById('colorbar').style.display = 'none'; }
+
+// ==================== Data Loading ====================
+async function loadJSON(path) {
+  try {
+    console.log('Fetching:', path);
+    const resp = await fetch(path);
+    if (!resp.ok) { console.warn('Not found:', path); return null; }
+    const data = await resp.json();
+    console.log('Loaded:', path, data ? 'OK' : 'null');
+    return data;
+  } catch (e) { console.error('Load error:', path, e); return null; }
+}
+
+async function loadModelData(model) {
+  showLoading(true);
+  try {
+    const prefix = `data/${model}`;
+    const [stress, paths, topo, gcode] = await Promise.all([
+      loadJSON(`${prefix}_stress.json`),
+      loadJSON(`${prefix}_paths.json`),
+      loadJSON(`${prefix}_topo.json`),
+      loadJSON(`${prefix}_gcode.json`),
+    ]);
+    state.data[model] = { stress, paths, topo, gcode };
+    console.log('Data loaded for', model, ':',
+      stress ? stress.centroids.length + ' stress pts' : 'no stress',
+      paths ? paths.n_paths + ' paths' : 'no paths');
+    updateInfoPanel(model);
+  } catch (e) {
+    console.error('loadModelData error:', e);
+    document.getElementById('loading-overlay').innerHTML =
+      `<div style="color:#ef5350;padding:20px;">Load error: ${e.message}</div>`;
+    return null;
+  }
+  showLoading(false);
+  return state.data[model];
+}
+
+function showLoading(show) {
+  document.getElementById('loading-overlay').classList.toggle('hidden', !show);
+}
+
+// ==================== Build 3D Objects ====================
+function clearObjects() {
+  for (const key of Object.keys(state.objects)) {
+    if (state.objects[key]) {
+      scene.remove(state.objects[key]);
+      if (state.objects[key].geometry) state.objects[key].geometry.dispose();
+      if (state.objects[key].material) state.objects[key].material.dispose();
+      // Group children
+      if (state.objects[key].children) {
+        state.objects[key].children.forEach(c => {
+          if (c.geometry) c.geometry.dispose();
+          if (c.material) c.material.dispose();
+        });
+      }
+      state.objects[key] = null;
+    }
+  }
+}
+
+function buildStressCloud(stressData, opacity, pointSize, cmapName) {
+  if (!stressData) return null;
+  const centroids = stressData.centroids;
+  const vm = stressData.von_mises;
+  const vmMin = stressData.vm_min;
+  const vmMax = stressData.vm_max;
+  const range = vmMax - vmMin || 1;
+  const cmap = getColormap(cmapName);
+
+  const n = centroids.length;
+  const positions = new Float32Array(n * 3);
+  const colors = new Float32Array(n * 3);
+
+  for (let i = 0; i < n; i++) {
+    positions[i * 3] = centroids[i][0];
+    positions[i * 3 + 1] = centroids[i][2]; // swap Y/Z for three.js
+    positions[i * 3 + 2] = centroids[i][1];
+    const t = (vm[i] - vmMin) / range;
+    const [r, g, b] = cmap(t);
+    colors[i * 3] = r;
+    colors[i * 3 + 1] = g;
+    colors[i * 3 + 2] = b;
+  }
+
+  const geom = new THREE.BufferGeometry();
+  geom.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  geom.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+
+  const mat = new THREE.PointsMaterial({
+    size: pointSize,
+    vertexColors: true,
+    transparent: true,
+    opacity: opacity,
+    sizeAttenuation: true,
+    depthWrite: false,
+  });
+
+  const points = new THREE.Points(geom, mat);
+  return points;
+}
+
+function buildDirectionArrows(stressData) {
+  if (!stressData || !stressData.sigma_1_dir) return null;
+  const group = new THREE.Group();
+  const centroids = stressData.centroids;
+  const dirs = stressData.sigma_1_dir;
+  // Show subset for performance
+  const step = Math.max(1, Math.floor(centroids.length / 500));
+  const arrowLen = 0.8;
+
+  for (let i = 0; i < centroids.length; i += step) {
+    const origin = new THREE.Vector3(centroids[i][0], centroids[i][2], centroids[i][1]);
+    const dir = new THREE.Vector3(dirs[i][0], dirs[i][2], dirs[i][1]).normalize();
+    const positions = new Float32Array(6);
+    const half = arrowLen / 2;
+    positions[0] = origin.x - dir.x * half;
+    positions[1] = origin.y - dir.y * half;
+    positions[2] = origin.z - dir.z * half;
+    positions[3] = origin.x + dir.x * half;
+    positions[4] = origin.y + dir.y * half;
+    positions[5] = origin.z + dir.z * half;
+    const geom = new THREE.BufferGeometry();
+    geom.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    const line = new THREE.Line(geom, new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.4 }));
+    group.add(line);
+  }
+  return group;
+}
+
+function buildFiberPaths(pathData, cmapName) {
+  if (!pathData) return null;
+  const group = new THREE.Group();
+  const paths = pathData.paths;
+  const cmap = getColormap(cmapName);
+
+  // Find Z range for coloring
+  let zMin = Infinity, zMax = -Infinity;
+  for (const p of paths) {
+    for (const pt of p) {
+      if (pt[2] < zMin) zMin = pt[2];
+      if (pt[2] > zMax) zMax = pt[2];
+    }
+  }
+  const zRange = zMax - zMin || 1;
+
+  for (let pi = 0; pi < paths.length; pi++) {
+    const p = paths[pi];
+    if (p.length < 2) continue;
+    const positions = new Float32Array(p.length * 3);
+    const colors = new Float32Array(p.length * 3);
+    for (let i = 0; i < p.length; i++) {
+      positions[i * 3] = p[i][0];
+      positions[i * 3 + 1] = p[i][2]; // swap Y/Z
+      positions[i * 3 + 2] = p[i][1];
+      const t = (p[i][2] - zMin) / zRange;
+      const [r, g, b] = cmap(t);
+      colors[i * 3] = r;
+      colors[i * 3 + 1] = g;
+      colors[i * 3 + 2] = b;
+    }
+    const geom = new THREE.BufferGeometry();
+    geom.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    geom.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+    const mat = new THREE.LineBasicMaterial({ vertexColors: true, linewidth: 1 });
+    group.add(new THREE.Line(geom, mat));
+  }
+  return group;
+}
+
+function buildTopoCloud(topoData, opacity, pointSize, cmapName) {
+  if (!topoData) return null;
+  const centroids = topoData.centroids;
+  const densities = topoData.densities;
+  const cmap = getColormap(cmapName);
+
+  // Filter very low density
+  const thresh = 0.05;
+  const indices = [];
+  for (let i = 0; i < densities.length; i++) {
+    if (densities[i] > thresh) indices.push(i);
+  }
+
+  const n = indices.length;
+  const positions = new Float32Array(n * 3);
+  const colors = new Float32Array(n * 3);
+  const sizes = new Float32Array(n);
+
+  for (let j = 0; j < n; j++) {
+    const i = indices[j];
+    positions[j * 3] = centroids[i][0];
+    positions[j * 3 + 1] = centroids[i][2];
+    positions[j * 3 + 2] = centroids[i][1];
+    const d = densities[i];
+    const [r, g, b] = cmap(d);
+    colors[j * 3] = r;
+    colors[j * 3 + 1] = g;
+    colors[j * 3 + 2] = b;
+    sizes[j] = pointSize * (0.3 + 0.7 * d);
+  }
+
+  const geom = new THREE.BufferGeometry();
+  geom.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  geom.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+
+  // Use ShaderMaterial for per-point size
+  const mat = new THREE.ShaderMaterial({
+    uniforms: { opacity: { value: opacity } },
+    vertexShader: `
+      attribute float size;
+      varying vec3 vColor;
+      void main() {
+        vColor = color;
+        vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+        gl_PointSize = size * (300.0 / -mvPosition.z);
+        gl_Position = projectionMatrix * mvPosition;
+      }
+    `,
+    fragmentShader: `
+      uniform float opacity;
+      varying vec3 vColor;
+      void main() {
+        float d = length(gl_PointCoord - vec2(0.5));
+        if (d > 0.5) discard;
+        float alpha = opacity * smoothstep(0.5, 0.3, d);
+        gl_FragColor = vec4(vColor, alpha);
+      }
+    `,
+    transparent: true,
+    depthWrite: false,
+    vertexColors: true,
+  });
+
+  geom.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+  return new THREE.Points(geom, mat);
+}
+
+function buildGcodePaths(gcodeData, progressFrac) {
+  if (!gcodeData) return null;
+  const group = new THREE.Group();
+  const positions = gcodeData.positions;
+  const isPrint = gcodeData.is_print;
+  const total = positions.length;
+  const limit = Math.floor(total * progressFrac);
+
+  // Separate print vs travel segments
+  let printPositions = [];
+  let travelPositions = [];
+
+  for (let i = 1; i < limit; i++) {
+    const prev = positions[i - 1];
+    const cur = positions[i];
+    if (isPrint[i]) {
+      printPositions.push(prev[0], prev[2], prev[1], cur[0], cur[2], cur[1]);
+    } else {
+      travelPositions.push(prev[0], prev[2], prev[1], cur[0], cur[2], cur[1]);
+    }
+  }
+
+  if (printPositions.length > 0) {
+    const geom = new THREE.BufferGeometry();
+    geom.setAttribute('position', new THREE.BufferAttribute(new Float32Array(printPositions), 3));
+    const mat = new THREE.LineBasicMaterial({ color: 0xff4444, linewidth: 1 });
+    group.add(new THREE.LineSegments(geom, mat));
+  }
+
+  if (travelPositions.length > 0) {
+    const geom = new THREE.BufferGeometry();
+    geom.setAttribute('position', new THREE.BufferAttribute(new Float32Array(travelPositions), 3));
+    const mat = new THREE.LineBasicMaterial({ color: 0x666688, linewidth: 1, transparent: true, opacity: 0.4 });
+    group.add(new THREE.LineSegments(geom, mat));
+  }
+
+  // Print head indicator
+  if (limit > 0 && limit <= total) {
+    const p = positions[limit - 1];
+    const headGeom = new THREE.SphereGeometry(0.4, 12, 12);
+    const headMat = new THREE.MeshBasicMaterial({ color: 0x4fc3f7 });
+    const head = new THREE.Mesh(headGeom, headMat);
+    head.position.set(p[0], p[2], p[1]);
+    group.add(head);
+  }
+
+  return group;
+}
+
+// ==================== Scene Update ====================
+function updateScene() {
+  const model = state.model;
+  const data = state.data[model];
+  if (!data) return;
+
+  clearObjects();
+
+  const opacity = parseFloat(document.getElementById('opacity-slider').value);
+  const pointSize = parseFloat(document.getElementById('size-slider').value);
+  const cmapName = document.getElementById('cmap-select').value;
+  const mode = state.mode;
+  const noDataMsg = document.getElementById('no-data-msg');
+  noDataMsg.style.display = 'none';
+
+  const showDirs = document.getElementById('show-directions').checked;
+
+  if (mode === 'stress' || mode === 'all') {
+    if (data.stress) {
+      state.objects.stress = buildStressCloud(data.stress, mode === 'all' ? opacity * 0.4 : opacity, pointSize, cmapName);
+      if (state.objects.stress) scene.add(state.objects.stress);
+      drawColorbar(cmapName, data.stress.vm_min, data.stress.vm_max, 'Von Mises (Pa)');
+      if (showDirs) {
+        state.objects.directions = buildDirectionArrows(data.stress);
+        if (state.objects.directions) scene.add(state.objects.directions);
+      }
+    } else if (mode === 'stress') {
+      noDataMsg.style.display = 'flex';
+      hideColorbar();
+    }
+  }
+
+  if (mode === 'paths' || mode === 'all') {
+    if (data.paths) {
+      state.objects.paths = buildFiberPaths(data.paths, cmapName);
+      if (state.objects.paths) scene.add(state.objects.paths);
+      if (mode === 'paths') hideColorbar();
+    } else if (mode === 'paths') {
+      noDataMsg.style.display = 'flex';
+    }
+  }
+
+  if (mode === 'topo') {
+    if (data.topo) {
+      state.objects.topo = buildTopoCloud(data.topo, opacity, pointSize * 1.5, cmapName);
+      if (state.objects.topo) scene.add(state.objects.topo);
+      drawColorbar(cmapName, 0, 1, 'Density');
+    } else {
+      noDataMsg.style.display = 'flex';
+      noDataMsg.textContent = 'No topology data / 无拓扑优化数据';
+      hideColorbar();
+    }
+  }
+
+  if (mode === 'gcode') {
+    if (data.gcode) {
+      const frac = parseInt(document.getElementById('gcode-progress').value) / 1000;
+      state.objects.gcode = buildGcodePaths(data.gcode, frac);
+      if (state.objects.gcode) scene.add(state.objects.gcode);
+      hideColorbar();
+      document.getElementById('gcode-controls').style.display = 'flex';
+      state.gcodeAnim.total = data.gcode.positions.length;
+    } else {
+      noDataMsg.style.display = 'flex';
+      noDataMsg.textContent = 'No G-code data / 无G代码数据';
+      hideColorbar();
+    }
+  }
+
+  if (mode !== 'gcode') {
+    document.getElementById('gcode-controls').style.display = 'none';
+    state.gcodeAnim.playing = false;
+    document.getElementById('gcode-play').innerHTML = '<span class="btn-icon">&#9654;</span>';
+  }
+
+  if (mode !== 'stress' && mode !== 'all' && mode !== 'topo') {
+    hideColorbar();
+  }
+}
+
+function autoCenterCamera() {
+  const data = state.data[state.model];
+  if (!data || !data.stress) return;
+  const c = data.stress.centroids;
+  let cx = 0, cy = 0, cz = 0;
+  for (const p of c) { cx += p[0]; cy += p[2]; cz += p[1]; }
+  const n = c.length;
+  cx /= n; cy /= n; cz /= n;
+
+  // Bounding box
+  let maxDist = 0;
+  for (const p of c) {
+    const d = Math.sqrt((p[0]-cx)**2 + (p[2]-cy)**2 + (p[1]-cz)**2);
+    if (d > maxDist) maxDist = d;
+  }
+  const dist = maxDist * 2;
+  controls.target.set(cx, cy, cz);
+  camera.position.set(cx + dist * 0.7, cy + dist * 0.5, cz + dist * 0.7);
+  controls.update();
+}
+
+// ==================== Info Panel ====================
+function updateInfoPanel(model) {
+  const data = state.data[model];
+  if (!data) return;
+
+  const nameMap = { live: 'Live / 实时计算', structured: 'Cylinder / 结构化缠绕', surface_geodesic: 'Cylinder / 曲面测地线' };
+  document.getElementById('info-model-name').textContent = nameMap[model] || model;
+
+  if (data.stress) {
+    document.getElementById('info-elements').textContent = data.stress.centroids.length.toLocaleString();
+    document.getElementById('info-vm-max').textContent = data.stress.vm_max.toExponential(3) + ' Pa';
+    document.getElementById('info-vm-min').textContent = data.stress.vm_min.toExponential(3) + ' Pa';
+    const mean = data.stress.von_mises.reduce((a, b) => a + b, 0) / data.stress.von_mises.length;
+    document.getElementById('info-vm-mean').textContent = mean.toExponential(3) + ' Pa';
+  }
+
+  if (data.paths) {
+    document.getElementById('info-n-paths').textContent = `${data.paths.n_paths}` + (data.paths.n_paths_total ? ` / ${data.paths.n_paths_total}` : '');
+    document.getElementById('info-total-length').textContent = (data.paths.total_length_mm || '--') + ' mm';
+  }
+
+  if (data.topo) {
+    document.getElementById('info-topo-status').textContent = 'Available';
+    document.getElementById('info-topo-elements').textContent = data.topo.centroids.length.toLocaleString();
+  } else {
+    document.getElementById('info-topo-status').textContent = 'N/A';
+    document.getElementById('info-topo-elements').textContent = '--';
+  }
+
+  if (data.gcode) {
+    const pts = data.gcode.positions.length;
+    const printPts = data.gcode.is_print.filter(Boolean).length;
+    document.getElementById('info-gcode-pts').textContent = pts.toLocaleString();
+    document.getElementById('info-gcode-print').textContent = printPts.toLocaleString();
+    document.getElementById('info-gcode-travel').textContent = (pts - printPts).toLocaleString();
+  } else {
+    document.getElementById('info-gcode-pts').textContent = '--';
+    document.getElementById('info-gcode-print').textContent = '--';
+    document.getElementById('info-gcode-travel').textContent = '--';
+  }
+}
+
+// ==================== Event Handlers ====================
+document.getElementById('model-select').addEventListener('change', async (e) => {
+  state.model = e.target.value;
+  if (!state.data[state.model]) {
+    await loadModelData(state.model);
+    autoCenterCamera();
+  }
+  updateScene();
+});
+
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    state.mode = btn.dataset.mode;
+    updateScene();
+  });
+});
+
+document.getElementById('opacity-slider').addEventListener('input', updateScene);
+document.getElementById('size-slider').addEventListener('input', updateScene);
+document.getElementById('cmap-select').addEventListener('change', updateScene);
+document.getElementById('show-grid').addEventListener('change', (e) => { grid.visible = e.target.checked; });
+document.getElementById('show-axes').addEventListener('change', (e) => { axes.visible = e.target.checked; });
+document.getElementById('show-directions').addEventListener('change', updateScene);
+
+document.getElementById('gcode-progress').addEventListener('input', (e) => {
+  document.getElementById('gcode-pct').textContent = Math.round(e.target.value / 10) + '%';
+  if (state.mode === 'gcode') updateScene();
+});
+
+document.getElementById('gcode-play').addEventListener('click', () => {
+  state.gcodeAnim.playing = !state.gcodeAnim.playing;
+  document.getElementById('gcode-play').innerHTML = state.gcodeAnim.playing
+    ? '<span class="btn-icon">&#9646;&#9646;</span>'
+    : '<span class="btn-icon">&#9654;</span>';
+});
+
+document.getElementById('gcode-speed').addEventListener('input', (e) => {
+  state.gcodeAnim.speed = parseInt(e.target.value);
+});
+
+document.getElementById('btn-screenshot').addEventListener('click', () => {
+  renderer.render(scene, camera);
+  const link = document.createElement('a');
+  link.download = `cfpp_${state.model}_${state.mode}.png`;
+  link.href = canvas.toDataURL();
+  link.click();
+});
+
+document.getElementById('btn-reset').addEventListener('click', () => {
+  autoCenterCamera();
+});
+
+// ==================== Resize ====================
+function onResize() {
+  const vp = document.getElementById('viewport');
+  const w = vp.clientWidth;
+  const h = vp.clientHeight;
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+  renderer.setSize(w, h);
+}
+window.addEventListener('resize', onResize);
+
+// ==================== Animation Loop ====================
+function animate() {
+  requestAnimationFrame(animate);
+  controls.update();
+
+  // G-code animation
+  if (state.gcodeAnim.playing && state.mode === 'gcode') {
+    const slider = document.getElementById('gcode-progress');
+    let val = parseInt(slider.value) + state.gcodeAnim.speed / 10;
+    if (val > 1000) val = 0;
+    slider.value = val;
+    document.getElementById('gcode-pct').textContent = Math.round(val / 10) + '%';
+    updateScene();
+  }
+
+  renderer.render(scene, camera);
+}
+
+// ==================== Compute Pipeline ====================
+document.getElementById('btn-compute').addEventListener('click', async () => {
+  const statusEl = document.getElementById('compute-status');
+  const model = document.getElementById('compute-model').value;
+  const strategy = document.getElementById('compute-strategy').value;
+
+  try {
+    // Step 1: Mesh
+    statusEl.textContent = '1/3 Generating mesh...';
+    const meshParams = model === 'cone'
+      ? {model:'cone', r_bottom:25, r_top:15, height:60, wall:5, mesh_size:2.5}
+      : {model:'cylinder', r_outer:25, r_inner:20, height:80, mesh_size:2.5};
+    const meshRes = await (await fetch('/api/mesh', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(meshParams)
+    })).json();
+    if (meshRes.error) { statusEl.textContent = 'Mesh error: '+meshRes.error; return; }
+    statusEl.textContent = '1/3 Mesh OK. Running FEA...';
+
+    // Step 2: FEA
+    const feaRes = await (await fetch('/api/fea', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({E_gpa:60, nu:0.3, P:500})
+    })).json();
+    if (feaRes.error) { statusEl.textContent = 'FEA error: '+feaRes.error; return; }
+    statusEl.textContent = `2/3 FEA OK (VM=${feaRes.max_von_mises.toFixed(1)}MPa). Planning paths...`;
+
+    // Step 3: Paths
+    const pathRes = await (await fetch('/api/paths', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({strategy: strategy, spacing: 2.0})
+    })).json();
+    if (pathRes.error) { statusEl.textContent = 'Path error: '+pathRes.error; return; }
+
+    const vf = pathRes.wall_fill_rate ? (pathRes.wall_fill_rate*100).toFixed(1)+'%' : '-';
+    const cov = pathRes.mean_coverage ? (pathRes.mean_coverage*100).toFixed(1)+'%' : '-';
+    statusEl.textContent = `Done! ${pathRes.total_paths} paths, Vf=${vf}, Coverage=${cov}`;
+
+    // Reload live data
+    state.model = 'live';
+    document.getElementById('model-select').value = 'live';
+    state.data['live'] = null;
+    await loadModelData('live');
+    autoCenterCamera();
+    updateScene();
+
+  } catch(e) {
+    statusEl.textContent = 'Error: ' + e.message;
+    console.error(e);
+  }
+});
+
+// ==================== Init ====================
+async function init() {
+  try {
+    onResize();
+    console.log('Loading data...');
+    // Try live data first, fall back to precomputed
+    const liveData = await loadModelData('live');
+    if (!liveData || (!liveData.stress && !liveData.paths)) {
+      console.log('No live data, loading precomputed...');
+      state.model = 'structured';
+      document.getElementById('model-select').value = 'structured';
+      await loadModelData('structured');
+    }
+    console.log('Data loaded, centering camera...');
+    autoCenterCamera();
+    console.log('Updating scene...');
+    updateScene();
+    console.log('Starting animation...');
+    animate();
+    console.log('Init complete.');
+  } catch (e) {
+    console.error('Init failed:', e);
+    document.getElementById('loading-overlay').innerHTML =
+      `<div style="color:#ef5350;font-size:16px;">Error: ${e.message}<br><br><small>${e.stack}</small></div>`;
+  }
+}
+
+init();
+</script>
+</body>
+</html>

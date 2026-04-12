@@ -1,0 +1,2406 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CF Path Planner - Carbon Fiber 3D Print Path Planner</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;700&display=swap" rel="stylesheet">
+<style>
+/* ===== CSS Variables ===== */
+:root {
+  --bg: #F5F5F7;
+  --surface: #FFFFFF;
+  --border: #E8E8E8;
+  --text-primary: #2E3035;
+  --text-secondary: #6B6F77;
+  --text-hint: #9EA3AC;
+  --blue: #1890FF;
+  --blue-light: #E6F4FF;
+  --orange: #FF6B35;
+  --green: #52C41A;
+  --red: #FF4D4F;
+  --gray-bg: #F5F5F7;
+  --topbar-h: 48px;
+  --sidebar-w: 36px;
+  --right-panel-w: 280px;
+  --objlist-h: 36px;
+  --statusbar-h: 26px;
+  --radius-sm: 3px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --shadow: 0 2px 8px rgba(0,0,0,0.1);
+  --shadow-modal: 0 8px 32px rgba(0,0,0,0.18);
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: 'Noto Sans SC', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: 13px;
+  background: var(--bg);
+  color: var(--text-primary);
+  overflow: hidden;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  user-select: none;
+}
+
+/* ===== TOP BAR ===== */
+#topbar {
+  height: var(--topbar-h);
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  gap: 0;
+  flex-shrink: 0;
+  z-index: 100;
+}
+
+.topbar-logo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-right: 16px;
+  flex-shrink: 0;
+}
+.topbar-logo .logo-icon {
+  width: 28px; height: 28px;
+  background: linear-gradient(135deg, #2E3035 60%, #1890FF 100%);
+  border-radius: 6px;
+  display: flex; align-items: center; justify-content: center;
+  color: white; font-weight: 700; font-size: 11px; letter-spacing: 0.5px;
+}
+.topbar-logo .logo-text {
+  font-size: 14px; font-weight: 700; color: var(--text-primary); letter-spacing: 0.3px;
+}
+
+.topbar-menu {
+  display: flex; align-items: center; gap: 2px; margin-right: 12px;
+}
+.topbar-menu-item {
+  padding: 4px 10px; font-size: 13px; color: var(--text-secondary);
+  cursor: pointer; border-radius: var(--radius-sm);
+  transition: background 0.15s, color 0.15s;
+}
+.topbar-menu-item:hover { background: var(--bg); color: var(--text-primary); }
+
+.topbar-toolbar {
+  display: flex; align-items: center; gap: 2px; margin-right: 12px;
+}
+.topbar-tool-btn {
+  width: 32px; height: 32px;
+  display: flex; align-items: center; justify-content: center;
+  border: none; background: transparent; cursor: pointer; border-radius: var(--radius-sm);
+  color: var(--text-secondary); font-size: 16px; transition: background 0.15s, color 0.15s;
+}
+.topbar-tool-btn:hover { background: var(--bg); color: var(--text-primary); }
+.topbar-tool-btn.active { background: var(--blue-light); color: var(--blue); }
+.topbar-separator { width: 1px; height: 20px; background: var(--border); margin: 0 4px; }
+
+.topbar-spacer { flex: 1; }
+
+.topbar-right-tabs {
+  display: flex; align-items: stretch; height: 100%;
+  border-left: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.topbar-tab {
+  display: flex; align-items: center; padding: 0 18px;
+  font-size: 13px; font-weight: 500; color: var(--text-secondary);
+  cursor: pointer; border-right: 1px solid var(--border);
+  border-bottom: 2px solid transparent;
+  transition: color 0.15s, border-color 0.15s;
+  position: relative;
+}
+.topbar-tab:hover { color: var(--text-primary); background: var(--bg); }
+.topbar-tab.active { color: var(--blue); border-bottom-color: var(--blue); }
+
+/* ===== MAIN LAYOUT ===== */
+#main-layout {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+}
+
+/* ===== LEFT SIDEBAR ===== */
+#left-sidebar {
+  width: var(--sidebar-w);
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  display: flex; flex-direction: column; align-items: center;
+  padding: 6px 0; gap: 2px;
+  flex-shrink: 0; z-index: 10;
+}
+.sidebar-btn {
+  width: 28px; height: 28px;
+  display: flex; align-items: center; justify-content: center;
+  border: none; background: transparent; cursor: pointer;
+  border-radius: var(--radius-sm); color: var(--text-secondary);
+  font-size: 15px; transition: background 0.15s, color 0.15s;
+  position: relative;
+}
+.sidebar-btn:hover { background: var(--bg); color: var(--blue); }
+.sidebar-btn:hover::after {
+  content: attr(data-tip);
+  position: absolute; left: 36px; top: 50%; transform: translateY(-50%);
+  background: #2E3035; color: white; font-size: 11px; padding: 3px 7px;
+  border-radius: 3px; white-space: nowrap; pointer-events: none; z-index: 999;
+}
+.sidebar-separator { width: 20px; height: 1px; background: var(--border); margin: 3px 0; }
+
+/* ===== VIEWPORT AREA ===== */
+#viewport-area {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  position: relative;
+}
+
+#three-canvas-container {
+  flex: 1;
+  position: relative;
+  background: #1A1A2E;
+  overflow: hidden;
+}
+#three-canvas { display: block; width: 100%; height: 100%; }
+
+/* Viewport controls overlay */
+#viewport-overlay {
+  position: absolute; top: 8px; left: 8px;
+  display: flex; gap: 4px; z-index: 10;
+}
+.vp-btn {
+  padding: 4px 10px; background: rgba(255,255,255,0.12);
+  border: 1px solid rgba(255,255,255,0.2); border-radius: var(--radius-sm);
+  color: rgba(255,255,255,0.85); font-size: 12px; cursor: pointer;
+  transition: background 0.15s;
+}
+.vp-btn:hover, .vp-btn.active { background: rgba(24,144,255,0.4); border-color: var(--blue); color: white; }
+
+#viewport-info {
+  position: absolute; bottom: 8px; left: 8px;
+  color: rgba(255,255,255,0.5); font-size: 11px; pointer-events: none;
+}
+
+/* ===== OBJECT LIST BAR ===== */
+#object-list-bar {
+  height: var(--objlist-h);
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+  display: flex; align-items: center; padding: 0 10px; gap: 10px;
+  flex-shrink: 0;
+}
+.obj-list-toggle {
+  display: flex; align-items: center; gap: 4px;
+  font-size: 12px; font-weight: 500; color: var(--text-secondary);
+  cursor: pointer; padding: 3px 6px; border-radius: var(--radius-sm);
+}
+.obj-list-toggle:hover { background: var(--bg); }
+.obj-list-toggle svg { transition: transform 0.2s; }
+.obj-list-toggle.open svg { transform: rotate(180deg); }
+.obj-list-content { flex: 1; display: flex; align-items: center; gap: 6px; }
+.obj-list-empty { font-size: 12px; color: var(--text-hint); }
+.obj-list-item {
+  display: flex; align-items: center; gap: 6px; padding: 2px 8px;
+  background: var(--blue-light); border-radius: var(--radius-sm);
+  font-size: 12px; color: var(--blue); cursor: pointer;
+}
+.obj-list-actions { display: flex; gap: 4px; }
+.obj-action-btn {
+  display: flex; align-items: center; gap: 4px; padding: 3px 10px;
+  border: 1px solid var(--border); background: var(--surface); border-radius: var(--radius-sm);
+  font-size: 12px; color: var(--text-secondary); cursor: pointer; transition: all 0.15s;
+}
+.obj-action-btn:hover { border-color: var(--blue); color: var(--blue); }
+.obj-action-btn.primary { background: var(--blue); border-color: var(--blue); color: white; }
+.obj-action-btn.primary:hover { background: #0e7de0; }
+
+/* ===== RIGHT PANEL ===== */
+#right-panel {
+  width: var(--right-panel-w);
+  background: var(--surface);
+  border-left: 1px solid var(--border);
+  display: flex; flex-direction: column;
+  flex-shrink: 0; overflow: hidden;
+  transition: width 0.2s ease;
+  position: relative;
+}
+#right-panel.hidden { width: 0; overflow: hidden; }
+
+.rp-top {
+  padding: 10px 12px 8px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.rp-selects {
+  display: flex; gap: 6px;
+}
+.rp-select {
+  flex: 1; padding: 5px 20px 5px 8px;
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  background: var(--surface); color: var(--text-primary); font-size: 12px;
+  cursor: pointer; appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%239EA3AC'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 6px center;
+}
+.rp-select:focus { outline: none; border-color: var(--blue); }
+
+.rp-scroll {
+  flex: 1; overflow-y: auto; padding-bottom: 72px;
+}
+.rp-scroll::-webkit-scrollbar { width: 4px; }
+.rp-scroll::-webkit-scrollbar-thumb { background: #D0D0D0; border-radius: 2px; }
+
+/* Profile card */
+.rp-profile-card {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+}
+.rp-profile-header {
+  display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;
+}
+.rp-profile-name { font-size: 13px; font-weight: 500; color: var(--text-primary); }
+.rp-badge {
+  font-size: 10px; padding: 1px 6px; background: #FFF7E6;
+  border: 1px solid #FFD591; color: #FA8C16; border-radius: 10px;
+}
+.rp-printer-icon {
+  width: 48px; height: 48px; background: #F0F0F2; border-radius: var(--radius-md);
+  display: flex; align-items: center; justify-content: center;
+  color: var(--text-hint); font-size: 22px; margin-bottom: 10px;
+}
+.rp-param-row {
+  display: flex; align-items: center; justify-content: space-between; padding: 6px 0;
+  border-top: 1px solid var(--border);
+}
+.rp-param-label { font-size: 12px; color: var(--text-secondary); }
+.rp-param-value { display: flex; align-items: center; gap: 4px; }
+.rp-param-input {
+  width: 52px; text-align: right; padding: 3px 6px;
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  font-size: 12px; color: var(--text-primary); background: var(--surface);
+}
+.rp-param-input:focus { outline: none; border-color: var(--blue); }
+.rp-param-unit { font-size: 11px; color: var(--text-hint); min-width: 22px; }
+.rp-dots-btn {
+  width: 22px; height: 20px; display: flex; align-items: center; justify-content: center;
+  background: #F5F5F7; border: 1px solid var(--border); border-radius: var(--radius-sm);
+  cursor: pointer; font-size: 11px; color: var(--text-hint); letter-spacing: 1px;
+}
+.rp-dots-btn:hover { background: var(--border); }
+
+/* Section blocks in right panel */
+.rp-section {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+}
+.rp-section-title {
+  font-size: 12px; font-weight: 500; color: var(--text-primary); margin-bottom: 10px;
+}
+
+/* Slider with text endpoints */
+.rp-slider-group { display: flex; align-items: center; gap: 8px; }
+.rp-slider-label { font-size: 11px; color: var(--text-hint); white-space: nowrap; flex-shrink: 0; }
+.rp-slider {
+  flex: 1; -webkit-appearance: none; height: 4px;
+  background: linear-gradient(to right, var(--blue) 0%, var(--blue) 50%, #D9D9D9 50%, #D9D9D9 100%);
+  border-radius: 2px; cursor: pointer; outline: none;
+}
+.rp-slider::-webkit-slider-thumb {
+  -webkit-appearance: none; width: 14px; height: 14px;
+  background: white; border: 2px solid var(--blue); border-radius: 50%;
+  cursor: pointer; box-shadow: 0 1px 4px rgba(0,0,0,0.2);
+}
+
+/* Dropdown */
+.rp-dropdown {
+  width: 100%; padding: 5px 24px 5px 8px;
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  background: var(--surface); color: var(--text-primary); font-size: 12px; cursor: pointer;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%239EA3AC'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 8px center;
+}
+.rp-dropdown:focus { outline: none; border-color: var(--blue); }
+
+/* Adhesion tab selector */
+.rp-tab-selector { display: flex; border: 1px solid var(--border); border-radius: var(--radius-sm); overflow: hidden; }
+.rp-tab-option {
+  flex: 1; text-align: center; padding: 5px 0;
+  font-size: 12px; color: var(--text-secondary); cursor: pointer;
+  transition: background 0.15s, color 0.15s; border-right: 1px solid var(--border);
+}
+.rp-tab-option:last-child { border-right: none; }
+.rp-tab-option:hover { background: var(--bg); }
+.rp-tab-option.active { background: var(--blue); color: white; }
+
+/* More settings link */
+.rp-more-link {
+  display: block; padding: 8px 12px;
+  font-size: 12px; color: var(--blue); cursor: pointer; text-decoration: none;
+}
+.rp-more-link:hover { text-decoration: underline; }
+
+/* Generate button */
+.rp-generate-wrap {
+  position: absolute; bottom: 0; left: 0; right: 0;
+  padding: 10px 12px; background: var(--surface);
+  border-top: 1px solid var(--border);
+}
+.rp-generate-btn {
+  width: 100%; padding: 10px;
+  background: var(--orange); color: white; font-size: 14px; font-weight: 700;
+  border: none; border-radius: var(--radius-md); cursor: pointer;
+  transition: background 0.15s, transform 0.1s;
+  letter-spacing: 0.5px;
+}
+.rp-generate-btn:hover { background: #e85c28; }
+.rp-generate-btn:active { transform: scale(0.98); }
+.rp-generate-btn.loading { background: #aaa; cursor: not-allowed; }
+
+/* Progress bar */
+.rp-progress { margin-top: 6px; display: none; }
+.rp-progress-bar {
+  height: 4px; background: #E8E8E8; border-radius: 2px; overflow: hidden;
+}
+.rp-progress-fill {
+  height: 100%; background: var(--blue); border-radius: 2px; width: 0;
+  transition: width 0.3s ease;
+}
+.rp-progress-text { font-size: 11px; color: var(--text-hint); margin-top: 3px; }
+
+/* Result metrics card */
+.rp-result-card {
+  display: none; margin-top: 8px;
+  background: #F0F7FF; border: 1px solid #BAD7F5;
+  border-radius: var(--radius-md); padding: 8px 10px;
+}
+.rp-result-card.visible { display: block; }
+.rp-result-grid {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 4px 8px;
+}
+.rp-result-metric { display: flex; flex-direction: column; }
+.rp-result-label { font-size: 10px; color: var(--text-hint); }
+.rp-result-val {
+  font-size: 14px; font-weight: 700; color: var(--blue);
+  line-height: 1.3;
+}
+.rp-result-val.good { color: #52C41A; }
+.rp-result-actions { margin-top: 6px; display: flex; gap: 6px; }
+.rp-dl-btn {
+  flex: 1; padding: 5px 0; font-size: 12px; font-weight: 600;
+  background: var(--blue); color: white; border: none;
+  border-radius: var(--radius-sm); cursor: pointer;
+}
+.rp-dl-btn:hover { background: #0e7fe0; }
+
+/* quality slider label */
+.rp-quality-label {
+  font-size: 11px; color: var(--text-hint); margin-top: 4px;
+}
+
+/* STL upload drop zone */
+.rp-stl-drop {
+  border: 2px dashed var(--border); border-radius: var(--radius-md);
+  padding: 14px 10px; text-align: center; cursor: pointer;
+  transition: border-color 0.2s, background 0.2s;
+}
+.rp-stl-drop:hover { border-color: var(--blue); background: var(--blue-light); }
+.rp-stl-icon { font-size: 22px; color: var(--text-hint); margin-bottom: 3px; }
+.rp-stl-text { font-size: 12px; color: var(--text-primary); font-weight: 500; }
+.rp-stl-hint { font-size: 11px; color: var(--text-hint); margin-top: 2px; }
+.rp-stl-loaded { font-size: 11px; color: var(--green); margin-top: 4px; font-weight: 500; }
+
+/* Strategy radio rows */
+.rp-strategy-group { display: flex; flex-direction: column; gap: 2px; }
+.rp-radio-row {
+  display: flex; align-items: center; gap: 7px; padding: 4px 0;
+  cursor: pointer; font-size: 12px; color: var(--text-secondary);
+}
+.rp-radio-row input { accent-color: var(--blue); cursor: pointer; }
+.rp-radio-row:hover { color: var(--text-primary); }
+
+/* Hint box */
+.rp-hint-box {
+  background: #FFF7E6; border: 1px solid #FFD591;
+  border-radius: var(--radius-sm); padding: 5px 8px;
+  font-size: 11px; color: #D46B08; margin-top: 4px;
+}
+
+/* Angle + value in single row */
+.rp-param-slider {
+  flex: 1; height: 4px; accent-color: var(--blue); cursor: pointer;
+  -webkit-appearance: none; outline: none; border-radius: 2px;
+  background: linear-gradient(to right, var(--blue) 50%, #D9D9D9 50%);
+}
+
+/* Stepper +/- buttons */
+.rp-stepper-btn {
+  width: 24px; height: 24px; border: 1px solid var(--border);
+  background: var(--bg); border-radius: var(--radius-sm); cursor: pointer;
+  font-size: 14px; line-height: 1; display: flex; align-items: center; justify-content: center;
+  color: var(--text-primary); flex-shrink: 0;
+}
+.rp-stepper-btn:hover { background: var(--blue); color: white; border-color: var(--blue); }
+
+/* ===== LAYER PREVIEW STRIP ===== */
+#layer-preview {
+  height: 40px; background: var(--surface); border-top: 1px solid var(--border);
+  display: none; align-items: center; padding: 0 12px; gap: 12px; flex-shrink: 0;
+}
+.lp-label { font-size: 11px; color: var(--text-secondary); white-space: nowrap; font-weight: 500; }
+.lp-slider-wrap { flex: 1; max-width: 220px; }
+.lp-slider {
+  width: 100%; -webkit-appearance: none; height: 4px; border-radius: 2px;
+  background: linear-gradient(to right, var(--orange) 100%, #D9D9D9 100%);
+  outline: none; cursor: pointer; accent-color: var(--orange);
+}
+.lp-slider::-webkit-slider-thumb {
+  -webkit-appearance: none; width: 12px; height: 12px;
+  background: var(--orange); border-radius: 50%; cursor: pointer;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.25);
+}
+.lp-counts { font-size: 11px; color: var(--text-secondary); white-space: nowrap; }
+.lp-legend { display: flex; gap: 10px; align-items: center; margin-left: auto; }
+.lp-legend-item { display: flex; align-items: center; gap: 3px; font-size: 11px; color: var(--text-secondary); }
+.lp-dot { width: 8px; height: 8px; border-radius: 2px; display: inline-block; flex-shrink: 0; }
+
+/* ===== STATUS BAR ===== */
+#statusbar {
+  height: var(--statusbar-h);
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+  display: flex; align-items: center; padding: 0 12px; gap: 16px;
+  flex-shrink: 0; z-index: 100;
+}
+.status-item { font-size: 11px; color: var(--text-secondary); display: flex; align-items: center; gap: 4px; }
+.status-dot { width: 6px; height: 6px; border-radius: 50%; }
+.status-dot.online { background: var(--green); }
+.status-dot.offline { background: var(--text-hint); }
+.status-sep { width: 1px; height: 14px; background: var(--border); }
+
+/* ===== MODALS ===== */
+.modal-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.45);
+  z-index: 1000; display: flex; align-items: center; justify-content: center;
+  opacity: 0; pointer-events: none; transition: opacity 0.2s;
+}
+.modal-overlay.visible { opacity: 1; pointer-events: auto; }
+
+.modal-box {
+  background: var(--surface); border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-modal); overflow: hidden;
+  transform: translateY(10px); transition: transform 0.2s;
+  display: flex; flex-direction: column;
+}
+.modal-overlay.visible .modal-box { transform: translateY(0); }
+
+.modal-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 20px; border-bottom: 1px solid var(--border); flex-shrink: 0;
+}
+.modal-title { font-size: 15px; font-weight: 700; color: var(--text-primary); }
+.modal-close {
+  width: 28px; height: 28px; display: flex; align-items: center; justify-content: center;
+  border: none; background: transparent; cursor: pointer; border-radius: var(--radius-sm);
+  color: var(--text-secondary); font-size: 18px; transition: background 0.15s;
+}
+.modal-close:hover { background: var(--bg); color: var(--text-primary); }
+
+/* ===== PRINT SETTINGS MODAL ===== */
+#print-settings-modal .modal-box {
+  width: 780px; height: 560px; max-width: 95vw; max-height: 90vh;
+}
+.ps-body { display: flex; flex: 1; overflow: hidden; }
+
+/* Left nav */
+.ps-nav {
+  width: 160px; flex-shrink: 0;
+  border-right: 1px solid var(--border); padding: 12px 0;
+  overflow-y: auto;
+}
+.ps-nav-item {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 16px; font-size: 13px; color: var(--text-secondary);
+  cursor: pointer; transition: background 0.15s, color 0.15s;
+  position: relative;
+}
+.ps-nav-item:hover { background: var(--bg); color: var(--text-primary); }
+.ps-nav-item.active { color: var(--blue); background: var(--blue-light); }
+.ps-nav-item.active::before {
+  content: ''; position: absolute; left: 0; top: 0; bottom: 0;
+  width: 3px; background: var(--blue); border-radius: 0 2px 2px 0;
+}
+.ps-nav-dot {
+  width: 8px; height: 8px; border-radius: 50%; border: 2px solid currentColor; flex-shrink: 0;
+}
+.ps-nav-item.active .ps-nav-dot { background: var(--blue); border-color: var(--blue); }
+.ps-nav-add {
+  margin: 8px 16px 0; padding: 6px; text-align: center;
+  border: 1px dashed var(--border); border-radius: var(--radius-sm);
+  font-size: 12px; color: var(--text-hint); cursor: pointer; transition: all 0.15s;
+}
+.ps-nav-add:hover { border-color: var(--blue); color: var(--blue); }
+
+/* Right content */
+.ps-content {
+  flex: 1; overflow-y: auto; padding: 0 20px 40px;
+}
+.ps-content::-webkit-scrollbar { width: 5px; }
+.ps-content::-webkit-scrollbar-thumb { background: #D0D0D0; border-radius: 2px; }
+
+.ps-section { padding-top: 4px; }
+
+.ps-section-header {
+  display: flex; align-items: center; gap: 8px;
+  padding: 14px 0 10px;
+  border-top: 1px solid var(--border);
+}
+.ps-section-header.first-section { border-top: none; }
+.ps-section-arrow { color: var(--blue); font-size: 12px; }
+.ps-section-title { font-size: 13px; font-weight: 600; color: var(--text-primary); }
+.ps-section-accent {
+  flex: 1; height: 2px; background: var(--blue); opacity: 0.15; border-radius: 1px;
+}
+
+.ps-param-row {
+  display: flex; align-items: center; padding: 7px 0;
+  border-bottom: 1px solid #F0F0F2; gap: 8px;
+}
+.ps-param-row:last-child { border-bottom: none; }
+.ps-param-label { flex: 1; font-size: 12px; color: var(--text-secondary); }
+.ps-param-label .ps-label-en { font-size: 11px; color: var(--text-hint); display: block; }
+.ps-param-controls { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
+
+.ps-input {
+  width: 60px; text-align: right; padding: 4px 6px;
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  font-size: 12px; color: var(--text-primary); background: var(--surface);
+}
+.ps-input:focus { outline: none; border-color: var(--blue); }
+.ps-unit { font-size: 11px; color: var(--text-hint); min-width: 28px; }
+.ps-dots {
+  width: 24px; height: 22px; display: flex; align-items: center; justify-content: center;
+  background: #F5F5F7; border: 1px solid var(--border); border-radius: var(--radius-sm);
+  cursor: pointer; font-size: 11px; color: var(--text-hint); letter-spacing: 1px;
+}
+.ps-dots:hover { background: var(--border); }
+
+.ps-select {
+  padding: 4px 22px 4px 7px; border: 1px solid var(--border); border-radius: var(--radius-sm);
+  background: var(--surface); color: var(--text-primary); font-size: 12px;
+  cursor: pointer; appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='5'%3E%3Cpath d='M0 0l4 5 4-5z' fill='%239EA3AC'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 6px center;
+  min-width: 110px;
+}
+.ps-select:focus { outline: none; border-color: var(--blue); }
+
+/* Speed tri-tab + number */
+.ps-speed-group { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.ps-speed-tabs { display: flex; border: 1px solid var(--border); border-radius: var(--radius-sm); overflow: hidden; }
+.ps-speed-tab {
+  padding: 3px 8px; font-size: 11px; color: var(--text-secondary);
+  cursor: pointer; border-right: 1px solid var(--border); transition: all 0.15s;
+}
+.ps-speed-tab:last-child { border-right: none; }
+.ps-speed-tab:hover { background: var(--bg); }
+.ps-speed-tab.active { background: var(--blue); color: white; }
+
+/* Toggle */
+.ps-toggle {
+  position: relative; display: inline-block; width: 34px; height: 18px;
+}
+.ps-toggle input { opacity: 0; width: 0; height: 0; }
+.ps-toggle-slider {
+  position: absolute; inset: 0; background: #D9D9D9; border-radius: 9px; cursor: pointer;
+  transition: background 0.2s;
+}
+.ps-toggle-slider::after {
+  content: ''; position: absolute; left: 2px; top: 2px;
+  width: 14px; height: 14px; background: white; border-radius: 50%;
+  transition: transform 0.2s; box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+}
+.ps-toggle input:checked + .ps-toggle-slider { background: var(--blue); }
+.ps-toggle input:checked + .ps-toggle-slider::after { transform: translateX(16px); }
+
+.modal-header-extra {
+  display: flex; align-items: center; gap: 10px; margin-right: 8px;
+}
+.ps-param-display-label { font-size: 12px; color: var(--text-secondary); }
+.ps-param-display-select {
+  padding: 3px 20px 3px 8px; border: 1px solid var(--border); border-radius: var(--radius-sm);
+  background: var(--surface); font-size: 12px; cursor: pointer; appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='5'%3E%3Cpath d='M0 0l4 5 4-5z' fill='%239EA3AC'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 5px center;
+}
+
+/* ===== MATERIAL SETTINGS MODAL ===== */
+#material-settings-modal .modal-box {
+  width: 680px; height: 500px; max-width: 95vw; max-height: 90vh;
+}
+.ms-body { display: flex; flex: 1; overflow: hidden; }
+
+.ms-list {
+  width: 160px; flex-shrink: 0; border-right: 1px solid var(--border);
+  overflow-y: auto; padding: 8px 0;
+}
+.ms-group-title {
+  padding: 6px 14px 3px; font-size: 11px; font-weight: 600;
+  color: var(--text-hint); text-transform: uppercase; letter-spacing: 0.5px;
+}
+.ms-list-item {
+  display: flex; align-items: center; gap: 6px;
+  padding: 7px 14px 7px 20px; font-size: 13px; color: var(--text-secondary);
+  cursor: pointer; transition: background 0.15s, color 0.15s;
+  position: relative;
+}
+.ms-list-item:hover { background: var(--bg); color: var(--text-primary); }
+.ms-list-item.active { color: var(--blue); background: var(--blue-light); }
+.ms-list-item.active::before {
+  content: ''; position: absolute; left: 0; top: 0; bottom: 0;
+  width: 3px; background: var(--blue); border-radius: 0 2px 2px 0;
+}
+.ms-list-radio {
+  width: 10px; height: 10px; border-radius: 50%;
+  border: 2px solid currentColor; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+}
+.ms-list-item.active .ms-list-radio::after {
+  content: ''; width: 4px; height: 4px; background: var(--blue); border-radius: 50%;
+}
+.ms-list-add {
+  margin: 8px 12px 0; padding: 5px; text-align: center;
+  border: 1px dashed var(--border); border-radius: var(--radius-sm);
+  font-size: 12px; color: var(--text-hint); cursor: pointer;
+}
+.ms-list-add:hover { border-color: var(--blue); color: var(--blue); }
+
+.ms-content {
+  flex: 1; overflow-y: auto; padding: 0 20px 24px;
+}
+.ms-content::-webkit-scrollbar { width: 5px; }
+.ms-content::-webkit-scrollbar-thumb { background: #D0D0D0; border-radius: 2px; }
+
+.ms-section-header {
+  display: flex; align-items: center; gap: 8px;
+  padding: 14px 0 8px; border-top: 1px solid var(--border);
+}
+.ms-section-header.first-section { border-top: none; }
+.ms-section-arrow { color: var(--blue); font-size: 11px; }
+.ms-section-title { font-size: 13px; font-weight: 600; color: var(--text-primary); }
+
+.ms-param-row {
+  display: flex; align-items: center; padding: 7px 0;
+  border-bottom: 1px solid #F0F0F2;
+}
+.ms-param-row:last-child { border-bottom: none; }
+.ms-param-label { flex: 1; font-size: 12px; color: var(--text-secondary); }
+.ms-param-controls { display: flex; align-items: center; gap: 4px; }
+.ms-input {
+  width: 64px; text-align: right; padding: 4px 6px;
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  font-size: 12px; color: var(--text-primary); background: var(--surface);
+}
+.ms-input:focus { outline: none; border-color: var(--blue); }
+.ms-unit { font-size: 11px; color: var(--text-hint); min-width: 28px; }
+.ms-select {
+  padding: 4px 20px 4px 7px; border: 1px solid var(--border); border-radius: var(--radius-sm);
+  background: var(--surface); font-size: 12px; cursor: pointer; appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='5'%3E%3Cpath d='M0 0l4 5 4-5z' fill='%239EA3AC'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 6px center;
+  min-width: 100px;
+}
+.ms-select:focus { outline: none; border-color: var(--blue); }
+
+/* ===== TOOLTIP ===== */
+.tooltip-popup {
+  position: fixed; background: #2E3035; color: white;
+  padding: 6px 10px; border-radius: var(--radius-sm);
+  font-size: 11px; max-width: 200px; pointer-events: none;
+  z-index: 9999; display: none; box-shadow: var(--shadow);
+  line-height: 1.5;
+}
+
+/* Toast notification */
+.toast {
+  position: fixed; bottom: 40px; left: 50%; transform: translateX(-50%);
+  background: #2E3035; color: white; padding: 8px 18px;
+  border-radius: var(--radius-md); font-size: 13px;
+  z-index: 9999; opacity: 0; transition: opacity 0.3s;
+  pointer-events: none;
+}
+.toast.show { opacity: 1; }
+</style>
+</head>
+<body>
+
+<!-- ===== TOP BAR ===== -->
+<div id="topbar">
+  <div class="topbar-logo">
+    <div class="logo-icon">CF</div>
+    <div class="logo-text">CF Path Planner</div>
+  </div>
+
+  <div class="topbar-menu">
+    <div class="topbar-menu-item">文件</div>
+    <div class="topbar-menu-item">编辑</div>
+    <div class="topbar-menu-item">窗口</div>
+    <div class="topbar-menu-item">设置</div>
+    <div class="topbar-menu-item">帮助</div>
+  </div>
+
+  <div class="topbar-toolbar">
+    <div class="topbar-separator"></div>
+    <button class="topbar-tool-btn" title="新建" onclick="showToast('新建项目')">+</button>
+    <button class="topbar-tool-btn" title="打开" onclick="showToast('打开文件')">&#128193;</button>
+    <button class="topbar-tool-btn" title="保存" onclick="showToast('已保存')">&#128190;</button>
+    <div class="topbar-separator"></div>
+    <button class="topbar-tool-btn" title="撤销" onclick="showToast('撤销')">&#8617;</button>
+    <button class="topbar-tool-btn" title="重做" onclick="showToast('重做')">&#8618;</button>
+    <div class="topbar-separator"></div>
+    <button class="topbar-tool-btn active" id="tb-3d" title="3D视图" onclick="setView('3d')">&#9650;</button>
+    <button class="topbar-tool-btn" title="层视图" onclick="showToast('层视图')">&#9776;</button>
+  </div>
+
+  <div class="topbar-spacer"></div>
+
+  <div class="topbar-right-tabs">
+    <div class="topbar-tab active" id="tab-mode" onclick="switchTopTab('mode')">模式</div>
+    <div class="topbar-tab" id="tab-material" onclick="openMaterialModal()">材料</div>
+    <div class="topbar-tab" id="tab-params" onclick="toggleRightPanel()">参数</div>
+  </div>
+</div>
+
+<!-- ===== MAIN LAYOUT ===== -->
+<div id="main-layout">
+
+  <!-- Left sidebar -->
+  <div id="left-sidebar">
+    <button class="sidebar-btn" data-tip="回到原点" onclick="resetCamera()">&#8962;</button>
+    <button class="sidebar-btn" data-tip="保存场景" onclick="showToast('场景已保存')">&#128190;</button>
+    <div class="sidebar-separator"></div>
+    <button class="sidebar-btn" data-tip="撤销" onclick="showToast('撤销')">&#8617;</button>
+    <button class="sidebar-btn" data-tip="重做" onclick="showToast('重做')">&#8618;</button>
+    <div class="sidebar-separator"></div>
+    <button class="sidebar-btn" data-tip="顶视图" onclick="setView('top')">&#9651;</button>
+    <button class="sidebar-btn" data-tip="前视图" onclick="setView('front')">&#9632;</button>
+    <button class="sidebar-btn" data-tip="侧视图" onclick="setView('side')">&#9670;</button>
+  </div>
+
+  <!-- Viewport area -->
+  <div id="viewport-area">
+    <div id="three-canvas-container">
+      <canvas id="three-canvas"></canvas>
+
+      <div id="viewport-overlay">
+        <button class="vp-btn active" id="vbtn-3d" onclick="setView('3d')">3D</button>
+        <button class="vp-btn" id="vbtn-top" onclick="setView('top')">顶视图</button>
+        <button class="vp-btn" id="vbtn-front" onclick="setView('front')">前视图</button>
+        <button class="vp-btn" id="vbtn-side" onclick="setView('side')">侧视图</button>
+        <button class="vp-btn" onclick="resetCamera()" style="margin-left:8px;">&#8962; 复位</button>
+      </div>
+
+      <div id="viewport-info">拖动旋转 &nbsp;·&nbsp; 滚轮缩放 &nbsp;·&nbsp; 右键平移</div>
+    </div>
+
+    <!-- Object list bar -->
+    <div id="object-list-bar">
+      <div class="obj-list-toggle" id="obj-list-toggle" onclick="toggleObjList()">
+        <span>对象列表</span>
+        <svg width="10" height="6" viewBox="0 0 10 6"><path d="M0 0l5 6 5-6z" fill="#6B6F77"/></svg>
+      </div>
+      <div class="obj-list-content" id="obj-list-content">
+        <span class="obj-list-empty" id="obj-list-empty">未加载任何模型</span>
+        <div class="obj-list-item" id="obj-list-cylinder" style="display:none">
+          <span>&#128065;</span>
+          <span>圆柱体 (CF样品)</span>
+        </div>
+      </div>
+      <div class="obj-list-actions">
+        <button class="obj-action-btn" onclick="importModel()">+ 添加</button>
+        <button class="obj-action-btn primary" onclick="importModel()">&#8679; 导入</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Right panel -->
+  <div id="right-panel">
+    <div class="rp-top">
+      <div class="rp-selects">
+        <select class="rp-select">
+          <option>Snapmaker Original</option>
+          <option>CF-Printer Pro</option>
+          <option>自定义打印机</option>
+        </select>
+        <select class="rp-select">
+          <option>CF-3K 标准</option>
+          <option>CF-1K 黑色</option>
+          <option>CF-12K 高强</option>
+          <option>PLA-白色</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="rp-scroll">
+
+      <!-- Model Source -->
+      <div class="rp-section">
+        <div class="rp-section-title">模型来源</div>
+        <div class="rp-tab-selector" id="model-source-tabs">
+          <div class="rp-tab-option active" onclick="selectModelSource(this,'cylinder')">圆柱</div>
+          <div class="rp-tab-option" onclick="selectModelSource(this,'cone')">锥体</div>
+          <div class="rp-tab-option" onclick="selectModelSource(this,'stl')">STL</div>
+        </div>
+      </div>
+
+      <!-- Geometry Params (cylinder/cone) -->
+      <div class="rp-section" id="geom-params-section">
+        <div class="rp-section-title">几何参数</div>
+        <div class="rp-param-row">
+          <span class="rp-param-label">外径</span>
+          <div class="rp-param-value">
+            <input type="number" class="rp-param-input" id="rp-r-outer" value="25" step="1" min="5" max="200">
+            <span class="rp-param-unit">mm</span>
+          </div>
+        </div>
+        <div class="rp-param-row">
+          <span class="rp-param-label">内径</span>
+          <div class="rp-param-value">
+            <input type="number" class="rp-param-input" id="rp-r-inner" value="20" step="1" min="0" max="200">
+            <span class="rp-param-unit">mm</span>
+          </div>
+        </div>
+        <div class="rp-param-row">
+          <span class="rp-param-label">高度</span>
+          <div class="rp-param-value">
+            <input type="number" class="rp-param-input" id="rp-height" value="80" step="5" min="10" max="500">
+            <span class="rp-param-unit">mm</span>
+          </div>
+        </div>
+        <div class="rp-param-row" id="rp-r-top-row" style="display:none">
+          <span class="rp-param-label">顶径</span>
+          <div class="rp-param-value">
+            <input type="number" class="rp-param-input" id="rp-r-top" value="15" step="1" min="0" max="200">
+            <span class="rp-param-unit">mm</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- STL Upload -->
+      <div class="rp-section" id="stl-upload-section" style="display:none">
+        <div class="rp-section-title">导入 STL 文件</div>
+        <div class="rp-stl-drop" id="rp-stl-drop"
+          onclick="triggerStlPick()"
+          ondragover="event.preventDefault()"
+          ondrop="handleStlDrop(event)">
+          <div class="rp-stl-icon">&#8682;</div>
+          <div class="rp-stl-text">点击上传 STL 文件</div>
+          <div class="rp-stl-hint">或拖拽到此处</div>
+          <div id="rp-stl-name" class="rp-stl-loaded" style="display:none"></div>
+        </div>
+      </div>
+
+      <!-- Print Parameters: rectilinear fill + CF winding -->
+      <div class="rp-section">
+        <div class="rp-section-title">CF 缠绕参数</div>
+        <div class="rp-param-row">
+          <span class="rp-param-label">缠绕角</span>
+          <div class="rp-param-value" style="gap:6px;flex:1">
+            <input type="range" class="rp-param-slider" id="rp-angle-slider" min="5" max="85" value="45"
+              oninput="updateAngleSlider(this)" style="flex:1;min-width:60px">
+            <input type="number" class="rp-param-input" id="rp-angle-val" value="45" min="5" max="85"
+              oninput="updateAngleInput(this)" style="width:40px">
+            <span class="rp-param-unit">°</span>
+          </div>
+        </div>
+        <div class="rp-param-row">
+          <span class="rp-param-label">CF 层数</span>
+          <div class="rp-param-value">
+            <button class="rp-stepper-btn" onclick="stepperAdj('rp-n-layers',-1)">−</button>
+            <input type="number" class="rp-param-input" id="rp-n-layers" value="4" min="1" max="20"
+              style="text-align:center;width:40px">
+            <button class="rp-stepper-btn" onclick="stepperAdj('rp-n-layers',1)">+</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="rp-section">
+        <div class="rp-section-title">基体填充参数</div>
+        <div class="rp-param-row">
+          <span class="rp-param-label">层高</span>
+          <div class="rp-param-value">
+            <input type="number" class="rp-param-input" id="rp-layer-h" value="0.18" step="0.01" min="0.05" max="0.5"
+              oninput="updateLayerHeight(this.value)">
+            <span class="rp-param-unit">mm</span>
+          </div>
+        </div>
+        <div class="rp-param-row">
+          <span class="rp-param-label">壁圈数</span>
+          <div class="rp-param-value">
+            <button class="rp-stepper-btn" onclick="stepperAdj('rp-n-walls',-1)">−</button>
+            <input type="number" class="rp-param-input" id="rp-n-walls" value="2" min="1" max="8"
+              style="text-align:center;width:40px">
+            <button class="rp-stepper-btn" onclick="stepperAdj('rp-n-walls',1)">+</button>
+          </div>
+        </div>
+        <div class="rp-param-row">
+          <span class="rp-param-label">填充密度</span>
+          <div class="rp-param-value" style="gap:6px;flex:1">
+            <input type="range" class="rp-param-slider" id="rp-infill-slider" min="5" max="100" value="25"
+              oninput="updateInfillSlider(this)" style="flex:1;min-width:60px">
+            <input type="number" class="rp-param-input" id="rp-infill-val" value="25" min="5" max="100"
+              oninput="updateInfillInput(this)" style="width:40px">
+            <span class="rp-param-unit">%</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Speed -->
+      <div class="rp-section">
+        <div class="rp-section-title">打印速度</div>
+        <div class="rp-slider-group">
+          <span class="rp-slider-label">慢</span>
+          <input type="range" class="rp-slider" id="rp-speed-slider" min="0" max="100" value="50"
+            oninput="updateSpeedSlider(this)">
+          <span class="rp-slider-label">快</span>
+        </div>
+        <div class="rp-quality-label" id="rp-speed-val">打印速度: 40 mm/s</div>
+      </div>
+
+      <!-- Support -->
+      <div class="rp-section">
+        <div class="rp-section-title">支撑结构</div>
+        <select class="rp-dropdown" id="rp-support" onchange="document.getElementById('sb-support').textContent=this.options[this.selectedIndex].text">
+          <option>无</option>
+          <option>普通支撑</option>
+          <option>树状支撑</option>
+        </select>
+      </div>
+
+      <a class="rp-more-link" href="#" onclick="event.preventDefault();openPrintSettings()">更多设置...</a>
+    </div>
+
+    <!-- Generate button (fixed bottom) -->
+    <div class="rp-generate-wrap">
+      <div class="rp-progress" id="rp-progress">
+        <div class="rp-progress-bar"><div class="rp-progress-fill" id="rp-progress-fill"></div></div>
+        <div class="rp-progress-text" id="rp-progress-text">正在计算路径...</div>
+      </div>
+      <!-- Result metrics card -->
+      <div class="rp-result-card" id="rp-result-card">
+        <div class="rp-result-grid">
+          <div class="rp-result-metric">
+            <span class="rp-result-label">体积填充率</span>
+            <span class="rp-result-val" id="res-fill-vf">—</span>
+          </div>
+          <div class="rp-result-metric">
+            <span class="rp-result-label">填充体积</span>
+            <span class="rp-result-val" id="res-fill-vol">—</span>
+          </div>
+          <div class="rp-result-metric">
+            <span class="rp-result-label">路径总长</span>
+            <span class="rp-result-val" id="res-total-len">—</span>
+          </div>
+          <div class="rp-result-metric">
+            <span class="rp-result-label">填充层数</span>
+            <span class="rp-result-val" id="res-fill-layers">—</span>
+          </div>
+        </div>
+        <div class="rp-result-actions">
+          <button class="rp-dl-btn" onclick="downloadGcode()">下载 G-code</button>
+        </div>
+      </div>
+      <button class="rp-generate-btn" id="rp-generate-btn" onclick="generateGcode()">生成 G-code</button>
+    </div>
+  </div>
+
+</div>
+
+<!-- ===== LAYER PREVIEW STRIP ===== -->
+<div id="layer-preview">
+  <div class="lp-label">层预览</div>
+  <div class="lp-slider-wrap">
+    <input type="range" class="lp-slider" id="lp-slider" min="1" max="100" value="100"
+      oninput="onLayerSlider(this)">
+  </div>
+  <div class="lp-counts"><span id="lp-current">100</span> / <span id="lp-total">100</span> 层</div>
+  <div class="lp-legend">
+    <div class="lp-legend-item"><span class="lp-dot" style="background:#FF6B35"></span>纤维路径</div>
+    <div class="lp-legend-item"><span class="lp-dot" style="background:#1890FF"></span>外壁</div>
+    <div class="lp-legend-item"><span class="lp-dot" style="background:#52C41A"></span>填充</div>
+    <div class="lp-legend-item"><span class="lp-dot" style="background:#FFBB33"></span>支撑</div>
+    <div class="lp-legend-item"><span class="lp-dot" style="background:#888"></span>空走</div>
+  </div>
+</div>
+
+<!-- Hidden STL file input -->
+<input type="file" id="stl-file-input" accept=".stl" style="display:none" onchange="handleStlUpload(this)">
+
+<!-- ===== STATUS BAR ===== -->
+<div id="statusbar">
+  <div class="status-item">
+    <div class="status-dot" id="server-dot"></div>
+    <span id="server-status">后端离线</span>
+  </div>
+  <div class="status-sep"></div>
+  <div class="status-item">层高: <span id="sb-layer">0.18mm</span></div>
+  <div class="status-sep"></div>
+  <div class="status-item">填充: <span id="sb-infill">20%</span></div>
+  <div class="status-sep"></div>
+  <div class="status-item">支撑: <span id="sb-support">无</span></div>
+  <div class="status-sep"></div>
+  <div class="status-item" id="sb-fiber-info">纤维路径: 未生成</div>
+</div>
+
+<!-- ===== PRINT SETTINGS MODAL ===== -->
+<div class="modal-overlay" id="print-settings-modal" onclick="handleModalBg(event,'print-settings-modal')">
+  <div class="modal-box" onclick="event.stopPropagation()">
+    <div class="modal-header">
+      <span class="modal-title">打印设置</span>
+      <div class="modal-header-extra">
+        <span class="ps-param-display-label">参数显示:</span>
+        <select class="ps-param-display-select" id="ps-display-mode" onchange="setParamDisplay(this.value)">
+          <option value="basic">基础</option>
+          <option value="expert">专家</option>
+        </select>
+      </div>
+      <button class="modal-close" onclick="closeModal('print-settings-modal')">&#215;</button>
+    </div>
+    <div class="ps-body">
+      <div class="ps-nav" id="ps-nav">
+        <div class="ps-nav-item active" data-sec="ps-sec-fineness" onclick="psNavClick(this)">
+          <div class="ps-nav-dot"></div>模型精细度
+        </div>
+        <div class="ps-nav-item" data-sec="ps-sec-speed" onclick="psNavClick(this)">
+          <div class="ps-nav-dot"></div>速度控制
+        </div>
+        <div class="ps-nav-item" data-sec="ps-sec-structure" onclick="psNavClick(this)">
+          <div class="ps-nav-dot"></div>模型结构
+        </div>
+        <div class="ps-nav-item" data-sec="ps-sec-support" onclick="psNavClick(this)">
+          <div class="ps-nav-dot"></div>支撑结构
+        </div>
+        <div class="ps-nav-item" data-sec="ps-sec-support-fine" onclick="psNavClick(this)">
+          <div class="ps-nav-dot"></div>支撑精调
+        </div>
+        <div class="ps-nav-item" data-sec="ps-sec-adhesion" onclick="psNavClick(this)">
+          <div class="ps-nav-dot"></div>初始层附着
+        </div>
+        <div class="ps-nav-item" data-sec="ps-sec-path" onclick="psNavClick(this)">
+          <div class="ps-nav-dot"></div>路径优化
+        </div>
+        <div class="ps-nav-add" onclick="showToast('添加自定义配置')">+ 添加配置</div>
+      </div>
+
+      <div class="ps-content" id="ps-content">
+
+        <!-- Model Fineness -->
+        <div class="ps-section" id="ps-sec-fineness">
+          <div class="ps-section-header first-section">
+            <span class="ps-section-arrow">&#9658;</span>
+            <span class="ps-section-title">模型精细度</span>
+            <div class="ps-section-accent"></div>
+          </div>
+          <div class="ps-param-row">
+            <div class="ps-param-label">层高 <span class="ps-label-en">Layer Height</span></div>
+            <div class="ps-param-controls">
+              <input type="number" class="ps-input" value="0.18" step="0.01" oninput="syncLayerHeight(this.value)">
+              <span class="ps-unit">mm</span>
+              <button class="ps-dots" onclick="showTip(event,'层高决定每层的厚度。值越小精度越高，打印时间越长。')">···</button>
+            </div>
+          </div>
+          <div class="ps-param-row">
+            <div class="ps-param-label">初始层高 <span class="ps-label-en">Initial Layer Height</span></div>
+            <div class="ps-param-controls">
+              <input type="number" class="ps-input" value="0.28" step="0.01">
+              <span class="ps-unit">mm</span>
+              <button class="ps-dots" onclick="showTip(event,'第一层通常比后续层厚，以增加附着力。')">···</button>
+            </div>
+          </div>
+          <div class="ps-param-row">
+            <div class="ps-param-label">线宽 <span class="ps-label-en">Line Width</span></div>
+            <div class="ps-param-controls">
+              <input type="number" class="ps-input" value="0.4" step="0.05">
+              <span class="ps-unit">mm</span>
+              <button class="ps-dots" onclick="showTip(event,'线宽通常等于喷嘴直径。碳纤维路径建议设为纤维束宽度。')">···</button>
+            </div>
+          </div>
+          <div class="ps-param-row expert-only" style="display:none">
+            <div class="ps-param-label">外壁线宽 <span class="ps-label-en">Outer Wall Line Width</span></div>
+            <div class="ps-param-controls">
+              <input type="number" class="ps-input" value="0.4" step="0.05">
+              <span class="ps-unit">mm</span>
+              <button class="ps-dots" onclick="showTip(event,'外轮廓线宽，影响表面光洁度。')">···</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Speed Control -->
+        <div class="ps-section" id="ps-sec-speed">
+          <div class="ps-section-header">
+            <span class="ps-section-arrow">&#9658;</span>
+            <span class="ps-section-title">速度控制</span>
+            <div class="ps-section-accent"></div>
+          </div>
+          <div class="ps-param-row">
+            <div class="ps-param-label">打印速度 <span class="ps-label-en">Print Speed</span></div>
+            <div class="ps-param-controls">
+              <div class="ps-speed-group">
+                <div class="ps-speed-tabs">
+                  <div class="ps-speed-tab active" onclick="setPsSpeed(this,30,'ps-print-speed')">慢</div>
+                  <div class="ps-speed-tab" onclick="setPsSpeed(this,40,'ps-print-speed')">中</div>
+                  <div class="ps-speed-tab" onclick="setPsSpeed(this,60,'ps-print-speed')">快</div>
+                </div>
+                <input type="number" class="ps-input" id="ps-print-speed" value="40" style="width:52px">
+                <span class="ps-unit">mm/s</span>
+                <button class="ps-dots" onclick="showTip(event,'打印速度影响质量和时间。碳纤维建议不超过60mm/s。')">···</button>
+              </div>
+            </div>
+          </div>
+          <div class="ps-param-row">
+            <div class="ps-param-label">空走速度 <span class="ps-label-en">Travel Speed</span></div>
+            <div class="ps-param-controls">
+              <div class="ps-speed-group">
+                <div class="ps-speed-tabs">
+                  <div class="ps-speed-tab" onclick="setPsSpeed(this,60,'ps-travel-speed')">慢</div>
+                  <div class="ps-speed-tab active" onclick="setPsSpeed(this,80,'ps-travel-speed')">中</div>
+                  <div class="ps-speed-tab" onclick="setPsSpeed(this,120,'ps-travel-speed')">快</div>
+                </div>
+                <input type="number" class="ps-input" id="ps-travel-speed" value="80" style="width:52px">
+                <span class="ps-unit">mm/s</span>
+                <button class="ps-dots" onclick="showTip(event,'空走速度越高，打印时间越短，但可能引起振动。')">···</button>
+              </div>
+            </div>
+          </div>
+          <div class="ps-param-row expert-only" style="display:none">
+            <div class="ps-param-label">初始层速度 <span class="ps-label-en">Initial Layer Speed</span></div>
+            <div class="ps-param-controls">
+              <input type="number" class="ps-input" value="20">
+              <span class="ps-unit">mm/s</span>
+              <button class="ps-dots" onclick="showTip(event,'第一层速度较慢以增强粘附。')">···</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Model Structure -->
+        <div class="ps-section" id="ps-sec-structure">
+          <div class="ps-section-header">
+            <span class="ps-section-arrow">&#9658;</span>
+            <span class="ps-section-title">模型结构</span>
+            <div class="ps-section-accent"></div>
+          </div>
+          <div class="ps-param-row">
+            <div class="ps-param-label">结构类型 <span class="ps-label-en">Structure Type</span></div>
+            <div class="ps-param-controls">
+              <select class="ps-select">
+                <option>Normal</option>
+                <option>Vase (花瓶)</option>
+                <option>Hollow (空心)</option>
+              </select>
+            </div>
+          </div>
+          <div class="ps-param-row">
+            <div class="ps-param-label">墙壁厚度 <span class="ps-label-en">Wall Thickness</span></div>
+            <div class="ps-param-controls">
+              <input type="number" class="ps-input" value="1.2" step="0.1">
+              <span class="ps-unit">mm</span>
+              <button class="ps-dots" onclick="showTip(event,'墙壁厚度决定外壳强度。碳纤维打印建议 ≥ 1.2mm。')">···</button>
+            </div>
+          </div>
+          <div class="ps-param-row">
+            <div class="ps-param-label">顶部厚度 <span class="ps-label-en">Top Thickness</span></div>
+            <div class="ps-param-controls">
+              <input type="number" class="ps-input" value="1" step="0.1">
+              <span class="ps-unit">mm</span>
+              <button class="ps-dots" onclick="showTip(event,'顶部封闭层厚度。')">···</button>
+            </div>
+          </div>
+          <div class="ps-param-row">
+            <div class="ps-param-label">底部厚度 <span class="ps-label-en">Bottom Thickness</span></div>
+            <div class="ps-param-controls">
+              <input type="number" class="ps-input" value="1" step="0.1">
+              <span class="ps-unit">mm</span>
+              <button class="ps-dots" onclick="showTip(event,'底部封闭层厚度。')">···</button>
+            </div>
+          </div>
+          <div class="ps-param-row">
+            <div class="ps-param-label">填充密度 <span class="ps-label-en">Infill Density</span></div>
+            <div class="ps-param-controls">
+              <input type="number" class="ps-input" value="20" step="5" oninput="updateInfill(this.value)">
+              <span class="ps-unit">%</span>
+              <button class="ps-dots" onclick="showTip(event,'填充密度越高，模型越重越强，耗料越多。')">···</button>
+            </div>
+          </div>
+          <div class="ps-param-row">
+            <div class="ps-param-label">填充图案 <span class="ps-label-en">Infill Pattern</span></div>
+            <div class="ps-param-controls">
+              <select class="ps-select">
+                <option>Tri-hexagon</option>
+                <option>Grid</option>
+                <option>Lines</option>
+                <option>Concentric</option>
+                <option>Gyroid</option>
+              </select>
+            </div>
+          </div>
+          <div class="ps-param-row">
+            <div class="ps-param-label">打印薄壁 <span class="ps-label-en">Print Thin Walls</span></div>
+            <div class="ps-param-controls">
+              <label class="ps-toggle"><input type="checkbox"><span class="ps-toggle-slider"></span></label>
+            </div>
+          </div>
+        </div>
+
+        <!-- Support Structure -->
+        <div class="ps-section" id="ps-sec-support">
+          <div class="ps-section-header">
+            <span class="ps-section-arrow">&#9658;</span>
+            <span class="ps-section-title">支撑结构</span>
+            <div class="ps-section-accent"></div>
+          </div>
+          <div class="ps-param-row">
+            <div class="ps-param-label">支撑类型 <span class="ps-label-en">Support Type</span></div>
+            <div class="ps-param-controls">
+              <select class="ps-select">
+                <option>无 (None)</option>
+                <option>普通 (Normal)</option>
+                <option>树状 (Tree)</option>
+              </select>
+            </div>
+          </div>
+          <div class="ps-param-row">
+            <div class="ps-param-label">悬臂角度 <span class="ps-label-en">Overhang Angle</span></div>
+            <div class="ps-param-controls">
+              <input type="number" class="ps-input" value="50" step="5">
+              <span class="ps-unit">°</span>
+              <button class="ps-dots" onclick="showTip(event,'超过此角度的悬臂区域将生成支撑。')">···</button>
+            </div>
+          </div>
+          <div class="ps-param-row">
+            <div class="ps-param-label">支撑偏好 <span class="ps-label-en">Support Preference</span></div>
+            <div class="ps-param-controls">
+              <select class="ps-select">
+                <option>Removable</option>
+                <option>Not in Crevices</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <!-- Support Fine-tuning -->
+        <div class="ps-section" id="ps-sec-support-fine">
+          <div class="ps-section-header">
+            <span class="ps-section-arrow">&#9658;</span>
+            <span class="ps-section-title">支撑精调</span>
+            <div class="ps-section-accent"></div>
+          </div>
+          <div class="ps-param-row">
+            <div class="ps-param-label">启用支撑界面 <span class="ps-label-en">Support Interface</span></div>
+            <div class="ps-param-controls">
+              <label class="ps-toggle"><input type="checkbox"><span class="ps-toggle-slider"></span></label>
+            </div>
+          </div>
+          <div class="ps-param-row expert-only" style="display:none">
+            <div class="ps-param-label">支撑间距 <span class="ps-label-en">Support Z Distance</span></div>
+            <div class="ps-param-controls">
+              <input type="number" class="ps-input" value="0.2" step="0.05">
+              <span class="ps-unit">mm</span>
+              <button class="ps-dots" onclick="showTip(event,'支撑与模型之间的间距，影响去除难度。')">···</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Initial Adhesion -->
+        <div class="ps-section" id="ps-sec-adhesion">
+          <div class="ps-section-header">
+            <span class="ps-section-arrow">&#9658;</span>
+            <span class="ps-section-title">初始层附着</span>
+            <div class="ps-section-accent"></div>
+          </div>
+          <div class="ps-param-row">
+            <div class="ps-param-label">附着类型 <span class="ps-label-en">Build Plate Adhesion</span></div>
+            <div class="ps-param-controls">
+              <select class="ps-select">
+                <option>Skirt (裙边)</option>
+                <option>Raft (底筏)</option>
+                <option>Brim (帽檐)</option>
+                <option>None (无)</option>
+              </select>
+            </div>
+          </div>
+          <div class="ps-param-row">
+            <div class="ps-param-label">初始层速度 <span class="ps-label-en">Initial Layer Speed</span></div>
+            <div class="ps-param-controls">
+              <input type="number" class="ps-input" value="20" step="5">
+              <span class="ps-unit">mm/s</span>
+              <button class="ps-dots" onclick="showTip(event,'第一层较慢的速度有助于更好地附着到热床。')">···</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Path Optimization -->
+        <div class="ps-section" id="ps-sec-path">
+          <div class="ps-section-header">
+            <span class="ps-section-arrow">&#9658;</span>
+            <span class="ps-section-title">路径优化</span>
+            <div class="ps-section-accent"></div>
+          </div>
+          <div class="ps-param-row">
+            <div class="ps-param-label">接缝对齐 <span class="ps-label-en">Seam Alignment</span></div>
+            <div class="ps-param-controls">
+              <select class="ps-select">
+                <option>Sharpest Corner</option>
+                <option>Shortest</option>
+                <option>Random</option>
+              </select>
+            </div>
+          </div>
+          <div class="ps-param-row">
+            <div class="ps-param-label">角落偏好 <span class="ps-label-en">Seam Corner Preference</span></div>
+            <div class="ps-param-controls">
+              <select class="ps-select">
+                <option>Hide Seam</option>
+                <option>Expose Seam</option>
+              </select>
+            </div>
+          </div>
+          <div class="ps-param-row">
+            <div class="ps-param-label">打印顺序 <span class="ps-label-en">Wall Ordering</span></div>
+            <div class="ps-param-controls">
+              <select class="ps-select">
+                <option>Inside To Outside</option>
+                <option>Outside To Inside</option>
+              </select>
+            </div>
+          </div>
+          <div class="ps-param-row">
+            <div class="ps-param-label">单向顶底 <span class="ps-label-en">Monotonic Order</span></div>
+            <div class="ps-param-controls">
+              <label class="ps-toggle"><input type="checkbox" checked><span class="ps-toggle-slider"></span></label>
+            </div>
+          </div>
+          <div class="ps-param-row">
+            <div class="ps-param-label">填充回抽 <span class="ps-label-en">Infill Retract Walls</span></div>
+            <div class="ps-param-controls">
+              <label class="ps-toggle"><input type="checkbox" checked><span class="ps-toggle-slider"></span></label>
+            </div>
+          </div>
+          <div class="ps-param-row">
+            <div class="ps-param-label">避免缝隙 <span class="ps-label-en">Avoid Gaps</span></div>
+            <div class="ps-param-controls">
+              <label class="ps-toggle"><input type="checkbox"><span class="ps-toggle-slider"></span></label>
+            </div>
+          </div>
+          <div class="ps-param-row">
+            <div class="ps-param-label">避穿支撑 <span class="ps-label-en">Avoid Supports</span></div>
+            <div class="ps-param-controls">
+              <label class="ps-toggle"><input type="checkbox"><span class="ps-toggle-slider"></span></label>
+            </div>
+          </div>
+        </div>
+
+      </div><!-- end ps-content -->
+    </div><!-- end ps-body -->
+  </div><!-- end modal-box -->
+</div><!-- end print-settings-modal -->
+
+
+<!-- ===== MATERIAL SETTINGS MODAL ===== -->
+<div class="modal-overlay" id="material-settings-modal" onclick="handleModalBg(event,'material-settings-modal')">
+  <div class="modal-box" onclick="event.stopPropagation()">
+    <div class="modal-header">
+      <span class="modal-title">材料设置</span>
+      <div class="modal-header-extra">
+        <span class="ps-param-display-label">参数显示:</span>
+        <select class="ps-param-display-select">
+          <option>基础</option>
+          <option>专家</option>
+        </select>
+      </div>
+      <button class="modal-close" onclick="closeModal('material-settings-modal')">&#215;</button>
+    </div>
+    <div class="ms-body">
+      <div class="ms-list">
+        <div class="ms-group-title">PLA材料</div>
+        <div class="ms-list-item" onclick="selectMaterial(this,'CF-1K 黑色')">
+          <div class="ms-list-radio"></div>CF-1K 黑色
+        </div>
+        <div class="ms-list-item active" onclick="selectMaterial(this,'CF-3K 标准')">
+          <div class="ms-list-radio"></div>CF-3K 标准
+        </div>
+        <div class="ms-list-item" onclick="selectMaterial(this,'CF-12K 高强')">
+          <div class="ms-list-radio"></div>CF-12K 高强
+        </div>
+        <div class="ms-group-title" style="margin-top:8px">支撑材料</div>
+        <div class="ms-list-item" onclick="selectMaterial(this,'PLA-白色')">
+          <div class="ms-list-radio"></div>PLA-白色
+        </div>
+        <div class="ms-list-item" onclick="selectMaterial(this,'ABS-白色')">
+          <div class="ms-list-radio"></div>ABS-白色
+        </div>
+        <div class="ms-list-add" onclick="showToast('添加自定义材料')">+ 添加配置</div>
+      </div>
+
+      <div class="ms-content">
+        <div>
+          <div class="ms-section-header first-section">
+            <span class="ms-section-arrow">&#9658;</span>
+            <span class="ms-section-title">基本信息</span>
+          </div>
+          <div class="ms-param-row">
+            <div class="ms-param-label">材料类型</div>
+            <div class="ms-param-controls">
+              <select class="ms-select">
+                <option>Color</option>
+                <option>Translucent</option>
+                <option>Metallic</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <div>
+          <div class="ms-section-header">
+            <span class="ms-section-arrow">&#9658;</span>
+            <span class="ms-section-title">加热冷却</span>
+          </div>
+          <div class="ms-param-row">
+            <div class="ms-param-label">打印温度</div>
+            <div class="ms-param-controls">
+              <input type="number" class="ms-input" value="240" step="5">
+              <span class="ms-unit">°C</span>
+            </div>
+          </div>
+          <div class="ms-param-row">
+            <div class="ms-param-label">热床温度</div>
+            <div class="ms-param-controls">
+              <input type="number" class="ms-input" value="80" step="5">
+              <span class="ms-unit">°C</span>
+            </div>
+          </div>
+          <div class="ms-param-row">
+            <div class="ms-param-label">风扇转速</div>
+            <div class="ms-param-controls">
+              <input type="number" class="ms-input" value="100" step="10">
+              <span class="ms-unit">%</span>
+            </div>
+          </div>
+        </div>
+
+        <div>
+          <div class="ms-section-header">
+            <span class="ms-section-arrow">&#9658;</span>
+            <span class="ms-section-title">精细调整</span>
+          </div>
+          <div class="ms-param-row">
+            <div class="ms-param-label">挤出量</div>
+            <div class="ms-param-controls">
+              <input type="number" class="ms-input" value="100" step="1">
+              <span class="ms-unit">%</span>
+            </div>
+          </div>
+        </div>
+
+        <div>
+          <div class="ms-section-header">
+            <span class="ms-section-arrow">&#9658;</span>
+            <span class="ms-section-title">回抽控制</span>
+          </div>
+          <div class="ms-param-row">
+            <div class="ms-param-label">启用回抽</div>
+            <div class="ms-param-controls">
+              <label class="ps-toggle"><input type="checkbox" checked><span class="ps-toggle-slider"></span></label>
+            </div>
+          </div>
+          <div class="ms-param-row">
+            <div class="ms-param-label">回抽距离</div>
+            <div class="ms-param-controls">
+              <input type="number" class="ms-input" value="2.0" step="0.1">
+              <span class="ms-unit">mm</span>
+            </div>
+          </div>
+          <div class="ms-param-row">
+            <div class="ms-param-label">回抽速度</div>
+            <div class="ms-param-controls">
+              <input type="number" class="ms-input" value="60" step="5">
+              <span class="ms-unit">mm/s</span>
+            </div>
+          </div>
+          <div class="ms-param-row">
+            <div class="ms-param-label">恢复速度</div>
+            <div class="ms-param-controls">
+              <input type="number" class="ms-input" value="60" step="5">
+              <span class="ms-unit">mm/s</span>
+            </div>
+          </div>
+          <div class="ms-param-row">
+            <div class="ms-param-label">回抽抬Z</div>
+            <div class="ms-param-controls">
+              <label class="ps-toggle"><input type="checkbox"><span class="ps-toggle-slider"></span></label>
+            </div>
+          </div>
+        </div>
+
+      </div><!-- end ms-content -->
+    </div><!-- end ms-body -->
+  </div><!-- end modal-box -->
+</div><!-- end material-settings-modal -->
+
+<!-- Tooltip popup -->
+<div class="tooltip-popup" id="tooltip-popup"></div>
+
+<!-- Toast notification -->
+<div class="toast" id="toast"></div>
+
+<!-- Three.js -->
+<script src="lib/three.min.js"></script>
+<script src="lib/OrbitControls.js"></script>
+
+<script>
+'use strict';
+// ============================
+// STATE
+// ============================
+const appState = {
+  rightPanelVisible: true,
+  activeView: '3d',
+  layerHeight: 0.18,
+  infillDensity: 20,
+  gcodeGenerated: false,
+};
+
+// ============================
+// THREE.JS SCENE
+// ============================
+let renderer, scene, camera, orbitControls;
+let cylinderMesh, helixGroup;
+
+function initThree() {
+  const container = document.getElementById('three-canvas-container');
+  const canvas = document.getElementById('three-canvas');
+  const w = container.clientWidth;
+  const h = container.clientHeight;
+
+  renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true });
+  renderer.setPixelRatio(window.devicePixelRatio);
+  renderer.setSize(w, h);
+  renderer.setClearColor(0x1A1A2E);
+  renderer.shadowMap.enabled = true;
+
+  scene = new THREE.Scene();
+  scene.fog = new THREE.Fog(0x1A1A2E, 200, 500);
+
+  camera = new THREE.PerspectiveCamera(45, w / h, 0.1, 1000);
+  camera.position.set(80, 80, 80);
+  camera.lookAt(0, 20, 0);
+
+  orbitControls = new THREE.OrbitControls(camera, renderer.domElement);
+  orbitControls.enableDamping = true;
+  orbitControls.dampingFactor = 0.08;
+  orbitControls.target.set(0, 20, 0);
+  orbitControls.update();
+
+  // Lighting
+  scene.add(new THREE.AmbientLight(0xffffff, 0.4));
+  const dirLight = new THREE.DirectionalLight(0xffffff, 0.9);
+  dirLight.position.set(50, 80, 60);
+  dirLight.castShadow = true;
+  scene.add(dirLight);
+  const fillLight = new THREE.DirectionalLight(0x4488ff, 0.3);
+  fillLight.position.set(-40, 20, -50);
+  scene.add(fillLight);
+
+  // Grid
+  const grid = new THREE.GridHelper(120, 24, 0x2a2a44, 0x222236);
+  scene.add(grid);
+
+  // Build platform
+  const platGeo = new THREE.BoxGeometry(100, 1, 100);
+  const platMat = new THREE.MeshLambertMaterial({ color: 0x1e1e32, transparent: true, opacity: 0.85 });
+  const platform = new THREE.Mesh(platGeo, platMat);
+  platform.position.y = -0.5;
+  platform.receiveShadow = true;
+  scene.add(platform);
+
+  // Axes helper (small, at corner)
+  buildAxes();
+
+  // Cylinder model
+  buildCylinder();
+
+  // Resize
+  const ro = new ResizeObserver(onResize);
+  ro.observe(container);
+
+  animate();
+}
+
+function buildAxes() {
+  const makeAxis = (dir, color) => {
+    const pts = [new THREE.Vector3(0,0,0), dir.clone().multiplyScalar(12)];
+    const geo = new THREE.BufferGeometry().setFromPoints(pts);
+    return new THREE.Line(geo, new THREE.LineBasicMaterial({ color: color }));
+  };
+  const ag = new THREE.Group();
+  ag.add(makeAxis(new THREE.Vector3(1,0,0), 0xff4444));
+  ag.add(makeAxis(new THREE.Vector3(0,1,0), 0x44ff44));
+  ag.add(makeAxis(new THREE.Vector3(0,0,1), 0x4488ff));
+  ag.position.set(-44, 0.2, -44);
+  scene.add(ag);
+}
+
+function buildCylinder(radius, length) {
+  const r = radius || 12;
+  const h = length || 40;
+  const geo = new THREE.CylinderGeometry(r, r, h, 64, 1, false);
+  const mat = new THREE.MeshPhongMaterial({
+    color: 0x2a2a3e,
+    transparent: true,
+    opacity: 0.35,
+    side: THREE.DoubleSide,
+  });
+  cylinderMesh = new THREE.Mesh(geo, mat);
+  cylinderMesh.position.y = h / 2;   // bottom at Y=0, top at Y=h
+  cylinderMesh.castShadow = true;
+  scene.add(cylinderMesh);
+
+  // Wireframe
+  const wf = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({
+    color: 0x4466bb, wireframe: true, transparent: true, opacity: 0.12
+  }));
+  cylinderMesh.add(wf);
+
+  document.getElementById('obj-list-empty').style.display = 'none';
+  document.getElementById('obj-list-cylinder').style.display = 'flex';
+}
+
+function updateCylinderMesh(radius, length) {
+  if (cylinderMesh) { scene.remove(cylinderMesh); cylinderMesh = null; }
+  buildCylinder(radius, length);
+  // Re-center orbit controls
+  const cy = length / 2;
+  orbitControls.target.set(0, cy, 0);
+  orbitControls.update();
+}
+
+// ============================
+// REAL PATH RENDERING
+// ============================
+let allLayerData = null;  // parsed live_layers.json
+
+// Color map: fill=blue, fiber/winding=orange, wall=cyan
+const LAYER_COLORS = { fill: 0x1890FF, fiber: 0xFF6B35, wall: 0x00E5FF };
+
+async function loadAndRenderPaths(nVisLayers) {
+  try {
+    const res = await fetch('http://localhost:8765/data/live_layers.json',
+                            { cache: 'no-store' });
+    if (!res.ok) throw new Error('no data');
+    allLayerData = await res.json();
+    renderLayerPaths(allLayerData.n_layers);   // show all layers
+  } catch (e) {
+    // fallback to demo helixes
+    buildHelixPaths(6, 12, 40, 8);
+  }
+}
+
+function renderLayerPaths(upToLayer) {
+  if (helixGroup) { scene.remove(helixGroup); helixGroup = null; }
+  if (!allLayerData || !allLayerData.layers) return;
+
+  helixGroup = new THREE.Group();
+  const data = allLayerData;
+  const strategy = data.strategy || 'constant';
+  const n = Math.min(upToLayer, data.layers.length);
+
+  for (let li = 0; li < n; li++) {
+    const pts = data.layers[li];
+    if (!pts || pts.length < 2) continue;
+
+    const ltype = (data.layer_types && data.layer_types[li]) || 'fiber';
+    const color = LAYER_COLORS[ltype] || 0xFF6B35;
+
+    const positions = new Float32Array(pts.length * 3);
+    for (let i = 0; i < pts.length; i++) {
+      // pts[i] = [x_3d, y_3d, z_3d]  (from _wp_to_3d in server)
+      // server: x=z_model*cos(a), y=z_model*sin(a), z=x_axial
+      // Three.js: x→x, y→z (up in Three.js), z→y
+      positions[i * 3]     = pts[i][0];
+      positions[i * 3 + 1] = pts[i][2];  // axial → Three.js Y (height)
+      positions[i * 3 + 2] = pts[i][1];
+    }
+
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    const mat = new THREE.LineBasicMaterial({ color, linewidth: 1.5 });
+    helixGroup.add(new THREE.Line(geo, mat));
+  }
+
+  helixGroup.position.y = 0;
+  scene.add(helixGroup);
+}
+
+// Legacy demo fallback (used when backend not connected)
+function buildHelixPaths(numPaths, radius, height, turns) {
+  if (helixGroup) { scene.remove(helixGroup); helixGroup = null; }
+  helixGroup = new THREE.Group();
+
+  const palette = [0xff6b35, 0x1890ff, 0x52c41a, 0xff4d9f, 0xffcc44, 0x00e5ff];
+  const n = numPaths || 6;
+  const r = (radius || 12) + 0.4;
+  const h = height || 40;
+  const t = turns || 8;
+  const segs = 200;
+
+  for (let p = 0; p < n; p++) {
+    const phase = (p / n) * Math.PI * 2;
+    const col = palette[p % palette.length];
+    const pts = [];
+    for (let i = 0; i <= segs; i++) {
+      const frac = i / segs;
+      const ang = frac * t * Math.PI * 2 + phase;
+      pts.push(new THREE.Vector3(r * Math.cos(ang), frac * h, r * Math.sin(ang)));
+    }
+    const geo = new THREE.BufferGeometry().setFromPoints(pts);
+    const mat = new THREE.LineBasicMaterial({ color: col, linewidth: 1.5 });
+    helixGroup.add(new THREE.Line(geo, mat));
+  }
+  helixGroup.position.y = 0;
+  scene.add(helixGroup);
+}
+
+function animate() {
+  requestAnimationFrame(animate);
+  orbitControls.update();
+  if (cylinderMesh) cylinderMesh.rotation.y += 0.0008;
+  renderer.render(scene, camera);
+}
+
+function onResize() {
+  const c = document.getElementById('three-canvas-container');
+  const w = c.clientWidth, h = c.clientHeight;
+  if (!w || !h) return;
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+  renderer.setSize(w, h);
+}
+
+// ============================
+// VIEW CONTROLS
+// ============================
+function getCylCenter() {
+  // cylinder bottom=Y0, top=Y=length; center = length/2
+  return cylinderMesh ? cylinderMesh.position.y : 20;
+}
+
+function resetCamera() {
+  const cy = getCylCenter();
+  const r = cylinderMesh ? (cylinderMesh.geometry.parameters.radiusTop || 25) : 25;
+  const dist = Math.max(80, r * 4);
+  camera.position.set(dist, dist * 0.8, dist);
+  orbitControls.target.set(0, cy, 0);
+  orbitControls.update();
+  setView('3d');
+}
+
+function setView(view) {
+  appState.activeView = view;
+  document.querySelectorAll('.vp-btn[id^="vbtn-"]').forEach(b => b.classList.remove('active'));
+  const btn = document.getElementById('vbtn-' + view);
+  if (btn) btn.classList.add('active');
+  const cy = getCylCenter();
+  const r = cylinderMesh ? (cylinderMesh.geometry.parameters.radiusTop || 25) : 25;
+  const h = cy * 2;
+  const dist = Math.max(80, Math.max(r, h) * 3.5);
+  if (view === '3d') {
+    camera.position.set(dist * 0.7, dist * 0.6, dist * 0.7);
+    orbitControls.target.set(0, cy, 0);
+  } else if (view === 'top') {
+    // Look down the Y axis → see concentric fill rings as circles
+    camera.position.set(0.01, dist, 0.01);
+    orbitControls.target.set(0, cy, 0);
+  } else if (view === 'front') {
+    camera.position.set(0, cy, dist);
+    orbitControls.target.set(0, cy, 0);
+  } else if (view === 'side') {
+    // Look along cylinder axis (Z=0) → best for end-face fill rings
+    camera.position.set(dist, cy, 0);
+    orbitControls.target.set(0, cy, 0);
+  }
+  orbitControls.update();
+}
+
+// ============================
+// TOPBAR
+// ============================
+function switchTopTab(tab) {
+  document.querySelectorAll('.topbar-tab').forEach(t => t.classList.remove('active'));
+  const el = document.getElementById('tab-' + tab);
+  if (el) el.classList.add('active');
+}
+
+function toggleRightPanel() {
+  appState.rightPanelVisible = !appState.rightPanelVisible;
+  document.getElementById('right-panel').classList.toggle('hidden', !appState.rightPanelVisible);
+  document.getElementById('tab-params').classList.toggle('active', appState.rightPanelVisible);
+  setTimeout(onResize, 260);
+}
+
+// ============================
+// RIGHT PANEL CONTROLS
+// ============================
+function selectAdhesion(el, val) {
+  document.querySelectorAll('.rp-tab-option').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+  appState.adhesion = val;
+}
+
+function updateSpeedSlider(el) {
+  const pct = parseInt(el.value);
+  const speed = Math.round(20 + (pct / 100) * 60);
+  document.getElementById('rp-speed-val').textContent = '打印速度: ' + speed + ' mm/s';
+  el.style.background = 'linear-gradient(to right, var(--blue) 0%, var(--blue) ' + pct + '%, #D9D9D9 ' + pct + '%, #D9D9D9 100%)';
+}
+
+function updateQualitySlider(el) {
+  const v = parseInt(el.value);
+  let label = '标准';
+  if (v < 25) label = '超精细';
+  else if (v < 50) label = '精细';
+  else if (v < 75) label = '标准';
+  else label = '快速';
+  const wall = (0.8 + (v / 100) * 1.6).toFixed(1);
+  const infill = Math.round(10 + (v / 100) * 30);
+  document.getElementById('rp-quality-val').textContent = '结构: ' + label + ' (墙壁: ' + wall + 'mm · 填充: ' + infill + '%)';
+  el.style.background = 'linear-gradient(to right, var(--blue) 0%, var(--blue) ' + v + '%, #D9D9D9 ' + v + '%, #D9D9D9 100%)';
+}
+
+function updateLayerHeight(val) {
+  appState.layerHeight = parseFloat(val) || 0.18;
+  document.getElementById('sb-layer').textContent = val + 'mm';
+}
+
+function updateInfill(val) {
+  appState.infillDensity = parseInt(val) || 20;
+  document.getElementById('sb-infill').textContent = val + '%';
+}
+
+function syncLayerHeight(val) {
+  updateLayerHeight(val);
+  document.getElementById('rp-layer-h').value = val;
+}
+
+function setPsSpeed(el, val, inputId) {
+  const tabs = el.closest('.ps-speed-tabs');
+  tabs.querySelectorAll('.ps-speed-tab').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+  document.getElementById(inputId).value = val;
+}
+
+function setParamDisplay(mode) {
+  document.querySelectorAll('.expert-only').forEach(r => {
+    r.style.display = mode === 'expert' ? 'flex' : 'none';
+  });
+}
+
+function toggleObjList() {
+  document.getElementById('obj-list-toggle').classList.toggle('open');
+}
+
+function importModel() {
+  // Switch to STL mode and trigger file picker
+  const stlTab = document.querySelector('#model-source-tabs .rp-tab-option:last-child');
+  if (stlTab) selectModelSource(stlTab, 'stl');
+  triggerStlPick();
+}
+
+// ============================
+// MODEL SOURCE
+// ============================
+let modelSource = 'cylinder';
+
+function selectModelSource(el, type) {
+  document.querySelectorAll('#model-source-tabs .rp-tab-option').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+  modelSource = type;
+  document.getElementById('geom-params-section').style.display = type === 'stl' ? 'none' : 'block';
+  document.getElementById('stl-upload-section').style.display = type === 'stl' ? 'block' : 'none';
+  document.getElementById('rp-r-top-row').style.display = type === 'cone' ? 'flex' : 'none';
+}
+
+function triggerStlPick() {
+  document.getElementById('stl-file-input').click();
+}
+
+function handleStlDrop(e) {
+  e.preventDefault();
+  const file = e.dataTransfer.files[0];
+  if (file && file.name.toLowerCase().endsWith('.stl')) uploadStlFile(file);
+  else showToast('请上传 .stl 格式文件');
+}
+
+function handleStlUpload(input) {
+  const file = input.files[0];
+  if (file) uploadStlFile(file);
+  input.value = ''; // allow re-upload same file
+}
+
+async function uploadStlFile(file) {
+  const drop = document.getElementById('rp-stl-drop');
+  const nameEl = document.getElementById('rp-stl-name');
+  drop.style.borderColor = 'var(--blue)';
+  nameEl.style.display = 'none';
+  showToast('正在上传 ' + file.name + '...');
+
+  const fd = new FormData();
+  fd.append('file', file);
+  fd.append('mesh_size', '2.5');
+
+  try {
+    const res = await fetch('http://localhost:8765/api/upload_stl', {
+      method: 'POST', body: fd,
+      signal: AbortSignal.timeout(30000)
+    });
+    const data = await res.json();
+    if (data.status === 'ok') {
+      nameEl.textContent = '✓ ' + file.name;
+      nameEl.style.display = 'block';
+      drop.style.borderColor = 'var(--green)';
+      setServerOnline(true);
+      showToast('STL 导入成功');
+      updateViewportForStl(file.name);
+      document.getElementById('obj-list-empty').style.display = 'none';
+      document.getElementById('obj-list-cylinder').style.display = 'flex';
+      document.getElementById('obj-list-cylinder').querySelector('span:last-child').textContent = file.name;
+    } else {
+      showToast('导入失败: ' + (data.error || '未知错误'));
+      drop.style.borderColor = 'var(--red)';
+    }
+  } catch (e) {
+    showToast('后端未启动，请先运行 server.py');
+    drop.style.borderColor = 'var(--border)';
+  }
+}
+
+function updateViewportForStl(name) {
+  if (cylinderMesh) { scene.remove(cylinderMesh); cylinderMesh = null; }
+  if (helixGroup) { scene.remove(helixGroup); helixGroup = null; }
+  // Show generic mesh placeholder
+  const geo = new THREE.BoxGeometry(30, 40, 30);
+  const mat = new THREE.MeshPhongMaterial({ color: 0x3a4a6b, transparent: true, opacity: 0.55 });
+  cylinderMesh = new THREE.Mesh(geo, mat);
+  cylinderMesh.position.y = 20;
+  scene.add(cylinderMesh);
+  const wf = new THREE.Mesh(geo,
+    new THREE.MeshBasicMaterial({ color: 0x4466bb, wireframe: true, transparent: true, opacity: 0.2 }));
+  cylinderMesh.add(wf);
+}
+
+// ============================
+// BACKEND API
+// ============================
+function downloadGcode() {
+  const a = document.createElement('a');
+  a.href = 'http://localhost:8765/data/output.gcode';
+  a.download = 'cf_path.gcode';
+  a.click();
+}
+
+async function callApi(endpoint, params) {
+  const res = await fetch('http://localhost:8765' + endpoint, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(params),
+    signal: AbortSignal.timeout(60000)
+  });
+  return await res.json();
+}
+
+// ============================
+// WINDING CONTROLS
+// ============================
+function updateInfillSlider(el) {
+  document.getElementById('rp-infill-val').value = el.value;
+  const pct = ((el.value - 5) / 95) * 100;
+  el.style.background = `linear-gradient(to right, var(--blue) ${pct}%, #D9D9D9 ${pct}%)`;
+}
+
+function updateInfillInput(el) {
+  const v = Math.max(5, Math.min(100, parseInt(el.value) || 25));
+  document.getElementById('rp-infill-slider').value = v;
+  el.value = v;
+  updateInfillSlider(document.getElementById('rp-infill-slider'));
+}
+
+function updateAngleSlider(el) {
+  document.getElementById('rp-angle-val').value = el.value;
+  const pct = ((el.value - 5) / 80) * 100;
+  el.style.background = `linear-gradient(to right, var(--blue) ${pct}%, #D9D9D9 ${pct}%)`;
+}
+
+function updateAngleInput(el) {
+  const v = Math.max(5, Math.min(85, parseInt(el.value) || 45));
+  document.getElementById('rp-angle-slider').value = v;
+  el.value = v;
+  updateAngleSlider(document.getElementById('rp-angle-slider'));
+}
+
+function stepperAdj(id, delta) {
+  const inp = document.getElementById(id);
+  const v = (parseInt(inp.value) || 0) + delta;
+  inp.value = Math.max(parseInt(inp.min) || 1, Math.min(parseInt(inp.max) || 999, v));
+}
+
+// ============================
+// LAYER PREVIEW
+// ============================
+function showLayerPreview(n) {
+  const el = document.getElementById('layer-preview');
+  el.style.display = 'flex';
+  const slider = document.getElementById('lp-slider');
+  slider.max = n;
+  slider.value = n;
+  document.getElementById('lp-current').textContent = n;
+  document.getElementById('lp-total').textContent = n;
+  // Init slider gradient
+  slider.style.background = `linear-gradient(to right, var(--orange) 100%, #D9D9D9 100%)`;
+}
+
+function onLayerSlider(el) {
+  const v = parseInt(el.value);
+  const max = parseInt(el.max) || 1;
+  document.getElementById('lp-current').textContent = v;
+  const pct = max > 1 ? ((v - 1) / (max - 1)) * 100 : 100;
+  el.style.background =
+    `linear-gradient(to right, var(--orange) ${pct}%, #D9D9D9 ${pct}%)`;
+  // Re-render Three.js up to this layer
+  renderLayerPaths(v);
+}
+
+// ============================
+// GENERATE G-CODE (real pipeline)
+// ============================
+async function generateGcode() {
+  const btn = document.getElementById('rp-generate-btn');
+  const progress = document.getElementById('rp-progress');
+  const fill = document.getElementById('rp-progress-fill');
+  const text = document.getElementById('rp-progress-text');
+  if (btn.disabled) return;
+
+  btn.textContent = '生成中...';
+  btn.classList.add('loading');
+  btn.disabled = true;
+  progress.style.display = 'block';
+  fill.style.width = '0%';
+
+  const setProgress = (pct, msg) => {
+    fill.style.width = pct + '%';
+    text.textContent = msg;
+  };
+
+  const strategy = 'combined';   // single unified algorithm
+  const angle    = parseFloat(document.getElementById('rp-angle-val').value) || 45;
+  const n_layers = parseInt(document.getElementById('rp-n-layers').value) || 4;
+  const n_walls  = parseInt(document.getElementById('rp-n-walls').value) || 2;
+  const infill_density = (parseFloat(document.getElementById('rp-infill-val').value) || 25) / 100;
+  const speedPct = parseInt(document.getElementById('rp-speed-slider').value);
+  const feedRate = Math.round((20 + speedPct / 100 * 60) * 60);
+  const geomRadius = parseFloat(document.getElementById('rp-r-outer').value) || 25;
+  const geomLength = parseFloat(document.getElementById('rp-height').value) || 50;
+
+  try {
+    setServerOnline(true);
+
+    // Step 1: mesh
+    if (modelSource !== 'stl') {
+      setProgress(10, '生成几何网格...');
+      let meshParams;
+      if (modelSource === 'cylinder') {
+        meshParams = {
+          model: 'cylinder',
+          r_outer: parseFloat(document.getElementById('rp-r-outer').value),
+          r_inner: parseFloat(document.getElementById('rp-r-inner').value),
+          height: parseFloat(document.getElementById('rp-height').value),
+          mesh_size: 3.0
+        };
+      } else {
+        meshParams = {
+          model: 'cone',
+          r_bottom: parseFloat(document.getElementById('rp-r-outer').value),
+          r_top: parseFloat(document.getElementById('rp-r-top').value || '15'),
+          height: parseFloat(document.getElementById('rp-height').value),
+          wall: 5.0, mesh_size: 3.0
+        };
+      }
+      const meshResult = await callApi('/api/mesh', meshParams);
+      if (meshResult.error) throw new Error('网格: ' + meshResult.error);
+      setProgress(25, '网格就绪');
+    } else {
+      setProgress(25, '使用已上传 STL');
+    }
+
+    // Step 2: FEA (only for stress strategy)
+    if (strategy === 'stress') {
+      setProgress(35, '运行有限元分析...');
+      const feaResult = await callApi('/api/fea', { E_gpa: 70, nu: 0.3, P: 500 });
+      if (feaResult.error) throw new Error('FEA: ' + feaResult.error);
+      setProgress(55, 'FEA完成 σ_max=' + (feaResult.max_von_mises || 0).toFixed(0) + ' MPa');
+    }
+
+    // Step 3: winding/fill paths
+    setProgress(60, strategy === 'fill' ? '计算整体填充路径...' :
+                    strategy === 'combined' ? '计算填充+CF缠绕路径...' :
+                    '计算XY+A缠绕路径...');
+    const geomRInner = parseFloat(document.getElementById('rp-r-inner').value) || 0;
+    const pathResult = await callApi('/api/xyza_paths', {
+      strategy, angle, n_layers, a_offset_z: 50.0,
+      radius: geomRadius, length: geomLength,
+      r_inner: geomRInner,
+      layer_height: appState.layerHeight,
+      extrusion_width: 0.4, n_walls, infill_density
+    });
+    if (pathResult.error) throw new Error('路径: ' + pathResult.error);
+    setProgress(82, '路径生成完成: ' + pathResult.n_waypoints + ' 点');
+
+    // Step 4: G-code
+    setProgress(90, '生成 G-code...');
+    const gcodeResult = await callApi('/api/gcode', {
+      feed_rate: feedRate, a_offset_z: 50.0,
+      layer_height: appState.layerHeight, extrusion_width: 0.4
+    });
+    if (gcodeResult.error) throw new Error('G-code: ' + gcodeResult.error);
+
+    // Success
+    setProgress(100, '完成！');
+    btn.textContent = '✓ G-code 已生成';
+    btn.style.background = 'var(--green)';
+    btn.classList.remove('loading');
+    btn.disabled = false;
+
+    const nVis = pathResult.n_vis_layers || (n_layers * 4);
+
+    // Update cylinder mesh to match actual geometry from path result
+    const actualRadius = pathResult.radius || 25;
+    const actualLength = pathResult.length || 50;
+    updateCylinderMesh(actualRadius, actualLength);
+
+    showLayerPreview(nVis);
+    await loadAndRenderPaths(nVis);
+
+    // For fill/combined: look down the cylinder axis to see concentric rings
+    if (strategy === 'fill' || strategy === 'combined') {
+      setView('top');
+    } else {
+      setView('3d');
+    }
+
+    document.getElementById('sb-fiber-info').textContent =
+      '路径: ' + pathResult.n_waypoints + ' 点 · ' +
+      (pathResult.total_length_mm || 0).toFixed(0) + ' mm · ' + nVis + ' 层';
+    showToast('G-code 已生成 (' + gcodeResult.n_lines + ' 行)');
+    appState.gcodeGenerated = true;
+
+    // Update result card
+    const vfPct = pathResult.fill_vf_pct || 0;
+    const fillVol = pathResult.fill_volume_mm3 || 0;
+    const cylVol = pathResult.cyl_volume_mm3 || 0;
+    document.getElementById('res-fill-vf').textContent = vfPct.toFixed(1) + '%';
+    document.getElementById('res-fill-vf').className = 'rp-result-val' + (vfPct >= 20 ? ' good' : '');
+    document.getElementById('res-fill-vol').textContent = (fillVol / 1000).toFixed(1) + ' cm³';
+    document.getElementById('res-total-len').textContent = ((pathResult.total_length_mm || 0) / 1000).toFixed(2) + ' m';
+    document.getElementById('res-fill-layers').textContent =
+      (pathResult.fill_vis_layers || 0) + ' fill · ' + (pathResult.fiber_vis_layers || 0) + ' CF';
+    document.getElementById('rp-result-card').classList.add('visible');
+
+    setTimeout(() => {
+      progress.style.display = 'none';
+      btn.textContent = '重新生成 G-code';
+      btn.style.background = '';
+    }, 3500);
+
+  } catch (e) {
+    // Demo fallback
+    setProgress(100, '演示模式（' + e.message.slice(0, 20) + '）');
+    btn.textContent = '✓ 演示模式';
+    btn.classList.remove('loading');
+    btn.disabled = false;
+    buildHelixPaths(6, 12, 40, 8);
+    showLayerPreview(n_layers * 4);
+    document.getElementById('sb-fiber-info').textContent = '纤维路径: 演示模式';
+    setTimeout(() => {
+      progress.style.display = 'none';
+      btn.textContent = '重新生成 G-code';
+      btn.style.background = '';
+    }, 2500);
+  }
+}
+
+// ============================
+// MODALS
+// ============================
+function openModal(id) {
+  document.getElementById(id).classList.add('visible');
+}
+
+function closeModal(id) {
+  document.getElementById(id).classList.remove('visible');
+}
+
+function handleModalBg(e, id) {
+  if (e.target === document.getElementById(id)) closeModal(id);
+}
+
+function openMaterialModal() {
+  switchTopTab('material');
+  openModal('material-settings-modal');
+}
+
+function openPrintSettings() {
+  openModal('print-settings-modal');
+  initScrollSpy();
+}
+
+function selectMaterial(el, name) {
+  document.querySelectorAll('.ms-list-item').forEach(i => i.classList.remove('active'));
+  el.classList.add('active');
+  showToast('已选择材料: ' + name);
+}
+
+// ============================
+// PRINT SETTINGS SCROLL SPY
+// ============================
+let scrollSpyObserver = null;
+
+function psNavClick(el) {
+  const secId = el.getAttribute('data-sec');
+  const sec = document.getElementById(secId);
+  if (sec) sec.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  document.querySelectorAll('.ps-nav-item').forEach(n => n.classList.remove('active'));
+  el.classList.add('active');
+}
+
+function initScrollSpy() {
+  const content = document.getElementById('ps-content');
+  const sections = content.querySelectorAll('.ps-section[id]');
+  const navItems = document.querySelectorAll('.ps-nav-item[data-sec]');
+
+  if (scrollSpyObserver) scrollSpyObserver.disconnect();
+
+  const secToIdx = {};
+  sections.forEach((s, i) => { secToIdx[s.id] = i; });
+
+  scrollSpyObserver = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        const idx = secToIdx[entry.target.id];
+        if (idx !== undefined) {
+          navItems.forEach(n => n.classList.remove('active'));
+          if (navItems[idx]) navItems[idx].classList.add('active');
+        }
+      }
+    });
+  }, {
+    root: content,
+    rootMargin: '0px 0px -55% 0px',
+    threshold: 0.05
+  });
+
+  sections.forEach(s => scrollSpyObserver.observe(s));
+}
+
+// ============================
+// TOOLTIP
+// ============================
+let tipTimer;
+
+function showTip(e, text) {
+  e.stopPropagation();
+  const tip = document.getElementById('tooltip-popup');
+  tip.textContent = text;
+  tip.style.display = 'block';
+  const x = Math.min(e.clientX + 14, window.innerWidth - 220);
+  const y = e.clientY - 10;
+  tip.style.left = x + 'px';
+  tip.style.top = y + 'px';
+  clearTimeout(tipTimer);
+  tipTimer = setTimeout(() => { tip.style.display = 'none'; }, 4000);
+}
+
+document.addEventListener('click', () => {
+  document.getElementById('tooltip-popup').style.display = 'none';
+});
+
+// ============================
+// TOAST
+// ============================
+let toastTimer;
+
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), 2600);
+}
+
+// ============================
+// SERVER STATUS
+// ============================
+function setServerOnline(online) {
+  const dot = document.getElementById('server-dot');
+  const txt = document.getElementById('server-status');
+  dot.style.background = online ? 'var(--green)' : 'var(--text-hint)';
+  txt.textContent = online ? '后端在线' : '后端离线';
+}
+
+async function checkServerStatus() {
+  try {
+    const r = await fetch('http://localhost:8765/api/status', {
+      signal: AbortSignal.timeout(2000)
+    });
+    setServerOnline(r.ok);
+  } catch (e) {
+    setServerOnline(false);
+  }
+}
+
+// ============================
+// KEYBOARD SHORTCUTS
+// ============================
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') {
+    closeModal('print-settings-modal');
+    closeModal('material-settings-modal');
+  }
+  if (e.ctrlKey && e.key === 's') { e.preventDefault(); showToast('已保存'); }
+  if (e.ctrlKey && e.key === 'z') showToast('撤销');
+  if (!e.ctrlKey && e.key === 'r') resetCamera();
+});
+
+// ============================
+// INIT
+// ============================
+window.addEventListener('DOMContentLoaded', () => {
+  initThree();
+  checkServerStatus();
+  setInterval(checkServerStatus, 15000);
+
+  // Init slider gradients
+  updateSpeedSlider(document.getElementById('rp-speed-slider'));
+  updateAngleSlider(document.getElementById('rp-angle-slider'));
+
+  // Bind layer height input event (already bound via oninput, backup)
+  document.getElementById('rp-layer-h').addEventListener('change', e => updateLayerHeight(e.target.value));
+});
+
+window.addEventListener('resize', onResize);
+</script>
+</body>
+</html>

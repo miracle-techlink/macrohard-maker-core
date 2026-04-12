@@ -1,0 +1,31 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.eggs/
+*.so
+*.dylib
+
+# Data / outputs
+visualization/data/live_*.json
+visualization/data/output.gcode
+examples/*/output/
+examples/*/output_structured/
+examples/*/output_surface/
+tests/output/
+*.gcode
+
+# Jupyter
+.ipynb_checkpoints/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log

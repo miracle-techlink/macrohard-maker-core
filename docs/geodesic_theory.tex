@@ -1,0 +1,442 @@
+\documentclass[11pt,a4paper]{article}
+
+\usepackage{fontspec}
+\setmainfont{Noto Serif CJK SC}
+\setsansfont{Noto Sans CJK SC}
+\setmonofont{Noto Sans Mono}
+
+\usepackage{geometry}
+\geometry{left=2.2cm, right=2.2cm, top=2.5cm, bottom=2.5cm}
+
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{xcolor}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{textcomp}
+\usepackage{hyperref}
+\usepackage{float}
+\usepackage{fancyhdr}
+\usepackage{enumitem}
+\usepackage{caption}
+\usepackage{subcaption}
+
+\definecolor{pass}{HTML}{2E7D32}
+\definecolor{fail}{HTML}{C62828}
+\definecolor{accent}{HTML}{1565C0}
+\definecolor{note}{HTML}{F57F17}
+
+\pagestyle{fancy}
+\fancyhf{}
+\lhead{\small Part D — 曲面路径规划原理}
+\rhead{\small cf-path-planner v0.2}
+\cfoot{\thepage}
+
+\title{\vspace{-1cm}\textsf{\textbf{曲面测地线路径规划原理}}\\
+\large Surface Geodesic Path Planning for Continuous Fiber 3D Printing\\[0.3em]
+\normalsize 面向 XZ+C 三轴连续碳纤维打印机的最优纤维铺放路径理论}
+\author{cf-path-planner / 连续碳纤维3D打印路径规划}
+\date{2026-03-31}
+
+\begin{document}
+\maketitle
+\thispagestyle{fancy}
+
+\tableofcontents
+\newpage
+
+% ============================================================
+\section{问题背景}
+
+连续碳纤维3D打印的核心挑战：\textbf{纤维方向决定零件力学性能}。纤维沿主应力方向铺放时结构最强，但同时必须满足制造约束——纤维贴在曲面上沉积时的\textbf{侧向力}不能超过粘附极限。
+
+三种路径规划策略的对比：
+
+\begin{table}[H]
+\centering
+\begin{tabularx}{\textwidth}{l X X X}
+\toprule
+\textbf{策略} & \textbf{2D 平面逐层} & \textbf{3D 体积流线} & \textbf{曲面测地线} \\
+\midrule
+代表方案 & Markforged Eiger & 旧 cf-path-planner & \textcolor{accent}{\textbf{本文方案}} \\
+路径维度 & 水平面内 2D & 3D 空间任意 & 零件表面上 \\
+机器适配 & XYZ 笛卡尔 & 无法制造 & \textcolor{pass}{\textbf{XZ+C 旋转}} \\
+侧向力 & 仅平面曲率 & 无法评估 & \textcolor{pass}{\textbf{测地线约束}} \\
+结构性能 & 固定角度 & 应力驱动 & \textcolor{pass}{\textbf{应力+测地线}} \\
+\bottomrule
+\end{tabularx}
+\caption{三种路径规划策略对比}
+\end{table}
+
+
+% ============================================================
+\section{机器运动学}
+
+\subsection{XZ+C 三轴构型}
+
+本项目打印机采用 \textbf{XZ 龙门 + C 轴旋转平台}构型：
+
+\begin{table}[H]
+\centering
+\begin{tabular}{llll}
+\toprule
+\textbf{轴} & \textbf{运动类型} & \textbf{物理含义} & \textbf{行程} \\
+\midrule
+X & 直线（水平） & 打印头径向位置（距零件距离） & 0--300 mm \\
+Z & 直线（垂直） & 打印头高度位置 & 0--350 mm \\
+C & 旋转（平台） & 零件角度位置（绕垂直轴旋转） & 0--$360^\circ$（连续） \\
+\bottomrule
+\end{tabular}
+\caption{轴定义}
+\end{table}
+
+这等价于\textbf{柱坐标系} $(r, \theta, z)$ 中的运动：
+\begin{itemize}[nosep]
+\item X 轴控制径向距离 $r$
+\item C 轴控制角度位置 $\theta$
+\item Z 轴控制高度 $z$
+\end{itemize}
+
+\subsection{与笛卡尔打印机的根本区别}
+
+\begin{table}[H]
+\centering
+\begin{tabularx}{\textwidth}{l X X}
+\toprule
+\textbf{特征} & \textbf{XYZ 笛卡尔 (Markforged)} & \textbf{XZ+C 旋转（本机器）} \\
+\midrule
+坐标系 & 笛卡尔 $(x,y,z)$ & 柱坐标 $(r,\theta,z)$ \\
+天然路径类型 & 平面内直线/曲线 & \textcolor{accent}{\textbf{螺旋线（曲面上的测地线）}} \\
+纤维铺放方式 & 逐层水平平面 & 沿零件曲面 \\
+适用几何 & 平板、低曲率 & \textcolor{pass}{\textbf{圆柱、管状、回转体}} \\
+\bottomrule
+\end{tabularx}
+\caption{机器构型对比}
+\end{table}
+
+
+% ============================================================
+\section{柱坐标下的路径描述}
+
+\subsection{曲面参数化}
+
+在半径为 $R$ 的圆柱面上，路径点表示为：
+\begin{equation}
+\mathbf{P}(s) = \big(R\cos\theta(s),\; R\sin\theta(s),\; z(s)\big)
+\end{equation}
+其中 $s$ 是弧长参数。
+
+\textbf{缠绕角}（winding angle） $\alpha$ 定义为纤维方向与环向的夹角：
+\begin{equation}
+\tan\alpha = \frac{dz/ds}{R \cdot d\theta/ds} = \frac{V_Z}{R \cdot \omega_C}
+\end{equation}
+其中 $V_Z$ 为 Z 轴速度，$\omega_C$ 为 C 轴角速度。
+
+\subsection{机器坐标映射}
+
+对匀速螺旋路径：
+\begin{align}
+X(t) &= R \quad\text{（对圆柱恒定）} \\
+C(t) &= \theta_0 + \omega_C \cdot t \\
+Z(t) &= z_0 + V_Z \cdot t
+\end{align}
+
+\begin{table}[H]
+\centering
+\begin{tabular}{lllll}
+\toprule
+\textbf{缠绕角} $\alpha$ & \textbf{路径类型} & $V_Z$ & $\omega_C$ & \textbf{测地线？} \\
+\midrule
+$0^\circ$（环向） & 圆环 & $0$ & $\omega$ & \textcolor{fail}{\textbf{否}} \\
+$30^\circ$ & 低角度螺旋 & $V_Z\sin 30^\circ$ & $\omega\cos 30^\circ$ & \textcolor{pass}{\textbf{是}} \\
+$45^\circ$ & 平衡螺旋 & $V_Z/\sqrt{2}$ & $\omega/\sqrt{2}$ & \textcolor{pass}{\textbf{是}} \\
+$90^\circ$（轴向） & 纵向直线 & $V_Z$ & $0$ & \textcolor{pass}{\textbf{是}} \\
+\bottomrule
+\end{tabular}
+\caption{不同缠绕角的路径类型}
+\end{table}
+
+
+% ============================================================
+\section{测地线理论}
+
+\subsection{定义}
+
+\textbf{测地线}是曲面上两点间的最短路径。等价地，测地线是\textbf{测地曲率} $\kappa_g = 0$ 的曲线。
+
+\begin{itemize}[nosep]
+\item 平面上的测地线 $=$ 直线
+\item 球面上的测地线 $=$ 大圆弧（飞机航线）
+\item \textbf{圆柱面上的测地线 $=$ 螺旋线}（任意角度，纯环向除外）
+\end{itemize}
+
+\subsection{Clairaut 关系}
+
+对于\textbf{旋转曲面}（绕 Z 轴旋转，母线半径 $r(z)$），测地线满足 \textbf{Clairaut 关系}：
+
+\begin{equation}
+\boxed{r(z) \cdot \cos\alpha(z) = C \quad\text{（沿测地线为常数）}}
+\end{equation}
+
+其中 $C$ 由初始条件决定：$C = r(z_0) \cdot \cos\alpha_0$。
+
+物理含义：
+\begin{itemize}[nosep]
+\item 当 $r(z)$ 减小（曲面收窄），$\cos\alpha$ 必须增大 $\Rightarrow$ $\alpha$ 减小 $\Rightarrow$ 纤维更趋环向
+\item 当 $C > r(z)$ 时，$\cos\alpha > 1$ 无解 $\Rightarrow$ 测地线的"折返点"
+\item 对圆柱 ($r = R = \text{const}$)：$\alpha = \text{const}$，即等角螺旋
+\end{itemize}
+
+\subsection{不同曲面上的测地线}
+
+\begin{table}[H]
+\centering
+\begin{tabularx}{\textwidth}{l l X l}
+\toprule
+\textbf{曲面} & \textbf{测地线形式} & \textbf{Clairaut 关系} & \textbf{特殊情况} \\
+\midrule
+圆柱 ($r=R$) & 等角螺旋 & $R\cos\alpha = C$ & 任意 $\alpha$ 均可 \\
+圆锥 ($r=kz$) & 变角螺旋 & $kz\cos\alpha = C$ & $\alpha$ 随 $z$ 变化 \\
+球面 & 大圆弧 & $R\sin\varphi\cos\alpha = C$ & — \\
+一般旋转体 & 数值积分 & $r(z)\cos\alpha = C$ & 需逐步求解 \\
+\bottomrule
+\end{tabularx}
+\caption{不同曲面上的测地线特征}
+\end{table}
+
+
+% ============================================================
+\section{侧向沉积力分析}
+
+\subsection{力学模型}
+
+纤维沉积时，侧向力来源于路径偏离测地线：
+
+\begin{equation}
+\boxed{F_{\text{lateral}} = T \cdot \kappa_g}
+\end{equation}
+
+其中 $T$ 为纤维张力（由张力控制系统设定），$\kappa_g$ 为路径的测地曲率。
+
+纤维不脱粘的条件（库仑摩擦模型）：
+\begin{equation}
+F_{\text{lateral}} < \mu \cdot F_{\text{normal}}
+\quad\Longrightarrow\quad
+T \cdot \kappa_g < \mu \cdot F_n
+\end{equation}
+
+最大允许测地曲率：
+\begin{equation}
+\kappa_{g,\max} = \frac{\mu \cdot F_n}{T}
+\end{equation}
+
+\subsection{典型参数}
+
+\begin{table}[H]
+\centering
+\begin{tabular}{llcl}
+\toprule
+\textbf{参数} & \textbf{符号} & \textbf{典型值} & \textbf{单位} \\
+\midrule
+纤维张力 & $T$ & 2.0 & N \\
+法向压力（压实辊） & $F_n$ & 10 & N \\
+摩擦系数（CF/PA6） & $\mu$ & 0.3--0.5 & — \\
+最大测地曲率 & $\kappa_{g,\max}$ & 1.5--2.5 & m$^{-1}$ \\
+最小偏离半径 & $1/\kappa_{g,\max}$ & 400--670 & mm \\
+\bottomrule
+\end{tabular}
+\caption{侧向力相关参数}
+\end{table}
+
+\textcolor{accent}{\textbf{关键推论}}：对 $R=25$ mm 圆柱，纤维沿测地线走时 $\kappa_g = 0$，侧向力为零。偏离测地线时，需要 $\kappa_g < 2.0$ m$^{-1}$，即偏离半径 $> 500$ mm——纤维几乎\textbf{必须}沿测地线方向铺放。
+
+\subsection{张力-曲率耦合}
+
+张力控制系统的最优策略：
+\begin{equation}
+T_{\text{optimal}}(\kappa_g) = \min\left(T_{\max},\; \frac{\mu \cdot F_n}{\kappa_g + \epsilon}\right)
+\end{equation}
+
+曲率大 $\to$ 降低张力（防止脱粘），曲率小 $\to$ 正常张力（保证压实质量）。
+
+
+% ============================================================
+\section{应力-测地线混合优化}
+
+\subsection{核心思想}
+
+在曲面上每一点，两个方向竞争：
+\begin{itemize}[nosep]
+\item $\mathbf{d}_\sigma$：主应力方向投影到曲面切平面（\textbf{结构最优}）
+\item $\mathbf{d}_g$：测地线方向（由 Clairaut 关系给出，\textbf{制造最优}）
+\end{itemize}
+
+偏差角 $\beta$：
+\begin{equation}
+\beta = \arccos\left(|\mathbf{d}_\sigma \cdot \mathbf{d}_g|\right)
+\end{equation}
+
+\subsection{优化目标函数}
+
+\begin{equation}
+\boxed{\mathbf{d}_{\text{opt}} = \arg\min_{\mathbf{d}} \left[ w_1 \cdot \big(1 - |\mathbf{d} \cdot \mathbf{d}_\sigma|^2\big) + w_2 \cdot \kappa_g(\mathbf{d})^2 \right]}
+\end{equation}
+
+\begin{table}[H]
+\centering
+\begin{tabularx}{\textwidth}{l c c X}
+\toprule
+\textbf{应用场景} & $w_1$（结构） & $w_2$（制造） & \textbf{策略说明} \\
+\midrule
+高载荷结构件 & 0.8 & 0.2 & 最大化强度，容许更大制造难度 \\
+通用零件 & 0.5 & 0.5 & 平衡折中 \\
+复杂曲面 & 0.3 & 0.7 & 优先保证可打印性 \\
+应力≈测地线 ($\beta < 10^\circ$) & 0.9 & 0.1 & 两目标天然对齐，最大化结构性能 \\
+\bottomrule
+\end{tabularx}
+\caption{权重选择指南}
+\end{table}
+
+\textcolor{accent}{\textbf{简化实现}}：对旋转曲面，$\mathbf{d}$ 可参数化为缠绕角 $\alpha$，优化退化为一维搜索：
+\begin{equation}
+\alpha_{\text{opt}} = \arg\min_\alpha \left[ w_1 \cdot \left(1 - \cos^2(\alpha - \alpha_\sigma)\right) + w_2 \cdot \left(\frac{\cos\alpha\sin\alpha}{r}\right)^2 \right]
+\end{equation}
+其中 $\alpha_\sigma$ 是主应力方向对应的缠绕角。
+
+
+% ============================================================
+\section{圆柱面上的具体分析}
+
+\subsection{Benchmark 工况}
+
+空心圆柱，$R_{\text{outer}} = 25$ mm，$R_{\text{inner}} = 20$ mm，$H = 80$ mm，壁厚 5 mm。
+
+载荷：底部固定，顶面施加侧向力 $P = 500$ N。
+
+\subsection{应力分布与测地线的关系}
+
+\begin{itemize}[nosep]
+\item \textbf{受拉侧}（$\theta = 0^\circ$）：$\sigma_1$ 方向 $\approx$ 轴向（$\alpha \approx 85\text{--}90^\circ$）$\to$ 测地线 $\checkmark$
+\item \textbf{受压侧}（$\theta = 180^\circ$）：$\sigma_1$ 方向 $\approx$ 轴向 $\to$ 测地线 $\checkmark$
+\item \textbf{剪切侧}（$\theta = 90^\circ, 270^\circ$）：$\sigma_1$ 方向 $\approx \pm 45^\circ$ 螺旋 $\to$ 测地线 $\checkmark$
+\end{itemize}
+
+\noindent\fbox{\parbox{\dimexpr\textwidth-2\fboxsep-2\fboxrule}{%
+\textcolor{pass}{\textbf{关键发现}}：圆柱体受弯曲载荷时，所有主应力方向恰好都是测地线方向（螺旋线）。
+偏差角 $\beta \approx 0^\circ$——结构最优与制造最优\textbf{天然对齐}。
+}}
+
+\subsection{不同路径策略对比}
+
+\begin{table}[H]
+\centering
+\begin{tabular}{lcccc}
+\toprule
+\textbf{路径策略} & $\alpha$ & $\kappa_g$ & $F_\text{lat}$ & \textbf{应力对齐} \\
+\midrule
+应力驱动测地线 & 变化 (45--$90^\circ$) & $\approx 0$ & $\approx 0$ & \textcolor{pass}{\textbf{最优}} \\
+固定 $0^\circ$ 环向 & $0^\circ$ & $1/R$ & \textcolor{fail}{过大} & 差（弯曲工况） \\
+固定 $90^\circ$ 轴向 & $90^\circ$ & 0 & 0 & 好（拉压侧） \\
+$\pm 45^\circ$ 交替 & $\pm 45^\circ$ & 0 & 0 & 好（剪切侧） \\
+\bottomrule
+\end{tabular}
+\caption{圆柱面上不同路径策略对比}
+\end{table}
+
+
+% ============================================================
+\section{一般曲面的推广}
+
+对于非圆柱的旋转曲面（如人形机器人膝关节罩、锥形连杆）：
+
+\subsection{算法流程}
+
+\begin{enumerate}[nosep]
+\item \textbf{曲面提取}：从四面体网格提取外表面三角网格
+\item \textbf{应力投影}：将体积应力场投影到表面切平面
+\item \textbf{测地线方向}：由 Clairaut 关系 $r(z)\cos\alpha = C$ 计算
+\item \textbf{方向融合}：按权重 $(w_1, w_2)$ 混合应力方向和测地线方向
+\item \textbf{曲面流线积分}：在三角面片上沿混合方向追踪路径
+\item \textbf{制造约束}：最小转弯半径、路径间距、测地曲率上限
+\item \textbf{机器坐标}：路径点 $+$ 表面法线 $\to$ $(X, Z, C)$ 机器指令
+\end{enumerate}
+
+\subsection{Clairaut 关系的局限}
+
+\begin{itemize}[nosep]
+\item 仅适用于旋转曲面（绕对称轴旋转的曲面）
+\item 非旋转曲面需用\textbf{离散测地线}方法（热方法/快速行进法）
+\item 当 $C > r(z)$ 时出现折返点——测地线无法到达该区域
+\end{itemize}
+
+\subsection{人形机器人零件复杂度分级}
+
+\begin{table}[H]
+\centering
+\begin{tabularx}{\textwidth}{l l l X}
+\toprule
+\textbf{零件} & \textbf{形状} & \textbf{曲面类型} & \textbf{测地线复杂度} \\
+\midrule
+上臂连杆 & 近似圆柱 & 旋转曲面 & 低（类似 benchmark） \\
+前臂连杆 & 渐缩圆柱 & 旋转曲面 & 中（变角度 $\alpha$） \\
+膝关节罩 & 双曲率曲面 & 一般曲面 & 高（需数值方法） \\
+小腿护板 & 弯曲板 & 近可展曲面 & 中 \\
+脚底板 & 复杂 3D & 一般曲面 & 高 \\
+\bottomrule
+\end{tabularx}
+\caption{不同零件的测地线计算复杂度}
+\end{table}
+
+
+% ============================================================
+\section{与现有方案的对比}
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabularx}{\textwidth}{l X X X X}
+\toprule
+\textbf{维度} & \textbf{Markforged} (2D) & \textbf{旧 cfpp} (3D) & \textbf{纤维缠绕} & \textbf{本方案} \\
+\midrule
+路径维度 & 平面 2D & 体积 3D & 曲面 & \textcolor{pass}{\textbf{曲面}} \\
+机器适配 & 仅 XYZ & 无法制造 & 缠绕机 & \textcolor{pass}{\textbf{XZ+C}} \\
+侧向力控制 & 无（平面） & 无（非表面） & $\kappa_g=0$ & \textcolor{pass}{\textbf{$\kappa_g$ 约束}} \\
+应力对齐 & 固定角度 & 最优 & 不考虑 & \textcolor{pass}{\textbf{最优+约束}} \\
+几何范围 & 平板 & 理论任意 & 凸旋转体 & 旋转曲面 \\
+路径连续性 & 短（逐层） & 中 & 长（多圈） & \textcolor{pass}{\textbf{长（螺旋）}} \\
+剪切次数 & 多 & 多 & 少 & \textcolor{pass}{\textbf{少}} \\
+\textbf{学术创新} & 无（商业） & 低 & 无（1960s） & \textcolor{accent}{\textbf{高（新组合）}} \\
+\bottomrule
+\end{tabularx}
+\caption{四种方案全面对比}
+\end{table}
+
+
+% ============================================================
+\section{总结}
+
+\subsection{核心创新点}
+
+本方案——\textbf{应力驱动的曲面测地线路径规划}——首次将三个独立领域的理论统一：
+
+\begin{enumerate}[nosep]
+\item \textbf{FEA 应力场分析}（结构力学）$\to$ 主应力方向
+\item \textbf{测地线理论}（微分几何）$\to$ 最小侧向力路径
+\item \textbf{XZ+C 运动学}（机器人学）$\to$ 可制造路径
+\end{enumerate}
+
+\subsection{关键公式汇总}
+
+\begin{align}
+&\text{Clairaut 关系：} & r(z)\cos\alpha &= C \label{eq:clairaut} \\
+&\text{侧向力：} & F_\text{lat} &= T \cdot \kappa_g \\
+&\text{不脱粘条件：} & \kappa_g &< \mu F_n / T \\
+&\text{优化目标：} & \mathbf{d}_\text{opt} &= \arg\min\left[w_1(1-|\mathbf{d}\cdot\mathbf{d}_\sigma|^2) + w_2\kappa_g^2\right]
+\end{align}
+
+\vfill
+\noindent\rule{\textwidth}{0.5pt}
+{\small 2026-03-31 \quad cf-path-planner v0.2.0 \quad 曲面测地线路径规划理论文档}
+
+\end{document}
