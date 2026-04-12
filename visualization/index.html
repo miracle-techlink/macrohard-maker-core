@@ -417,14 +417,14 @@ body {
 
 /* Model library grid card */
 .mlib-card {
-  border: 1.5px solid rgba(255,255,255,.07); border-radius: 10px;
+  border: 1px solid var(--border); border-radius: var(--radius-lg);
   padding: 14px 8px 12px; cursor: pointer; text-align: center;
-  background: rgba(255,255,255,.05); transition: border-color .15s, background .15s, transform .12s;
-  display: flex; flex-direction: column; align-items: center; gap: 5px;
+  background: #fff; transition: border-color .15s, background .15s, box-shadow .15s;
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
 }
-.mlib-card:hover { border-color: rgba(99,160,255,.6); background: rgba(99,160,255,.08); transform: translateY(-2px); }
-.mlib-card.active { border-color: var(--blue); background: rgba(59,130,246,.12); box-shadow: 0 0 0 2px rgba(59,130,246,.25); }
-.mlib-card-icon { font-size: 26px; line-height: 1.2; }
+.mlib-card:hover { border-color: var(--blue); background: var(--blue-light); box-shadow: 0 2px 8px rgba(24,144,255,.12); }
+.mlib-card.active { border-color: var(--blue); background: var(--blue-light); box-shadow: 0 0 0 2px rgba(24,144,255,.2); }
+.mlib-card-icon { font-size: 24px; line-height: 1.3; }
 .mlib-card-name { font-size: 12px; font-weight: 600; color: var(--text-primary); }
 .mlib-card-desc { font-size: 10px; color: var(--text-hint); line-height: 1.3; }
 
@@ -1042,41 +1042,41 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 });
 </script>
-  <div id="model-lib-modal" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:860px;max-width:97vw;height:580px;max-height:93vh;background:#1a1f2e;border-radius:14px;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 24px 80px rgba(0,0,0,.6);">
+  <div id="model-lib-modal" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:860px;max-width:97vw;height:580px;max-height:93vh;background:var(--bg);border-radius:var(--radius-lg);display:flex;flex-direction:column;overflow:hidden;box-shadow:0 16px 48px rgba(0,0,0,.18),0 0 0 1px var(--border);">
     <!-- Header -->
-    <div style="display:flex;align-items:center;padding:14px 20px 12px;border-bottom:1px solid var(--border);flex-shrink:0;gap:10px;">
-      <span style="font-size:16px;font-weight:700;color:var(--text-primary);">📦 内置模型库</span>
-      <span id="mlib-page-label" style="font-size:12px;color:var(--text-hint);"></span>
-      <button onclick="closeModelLibrary()" style="margin-left:auto;background:none;border:none;cursor:pointer;font-size:22px;color:var(--text-hint);line-height:1;padding:0 4px;">×</button>
+    <div style="display:flex;align-items:center;padding:12px 18px 11px;border-bottom:1px solid var(--border);flex-shrink:0;background:#fff;gap:8px;">
+      <span style="font-size:14px;font-weight:700;color:var(--text-primary);letter-spacing:.3px;">内置模型库</span>
+      <span id="mlib-page-label" style="font-size:12px;color:var(--text-hint);font-weight:400;"></span>
+      <button onclick="closeModelLibrary()" style="margin-left:auto;background:none;border:none;cursor:pointer;font-size:18px;color:var(--text-hint);line-height:1;padding:2px 6px;border-radius:var(--radius-sm);">×</button>
     </div>
     <!-- Body: 4×4 grid -->
-    <div style="flex:1;display:flex;flex-direction:column;overflow:hidden;padding:14px 14px 10px;position:relative;">
-      <div id="mlib-grid" style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;flex:1;align-content:start;overflow-y:auto;"></div>
+    <div style="flex:1;display:flex;flex-direction:column;overflow:hidden;padding:12px 12px 10px;position:relative;">
+      <div id="mlib-grid" style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;flex:1;align-content:start;overflow-y:auto;"></div>
       <!-- Pagination -->
       <div id="mlib-pagination" style="display:flex;align-items:center;justify-content:center;gap:8px;padding-top:10px;flex-shrink:0;">
-        <button id="mlib-prev" onclick="mlibPageChange(-1)" style="padding:5px 16px;border:1px solid var(--border);border-radius:6px;background:var(--bg-input);color:var(--text-primary);cursor:pointer;font-size:14px;">‹</button>
+        <button id="mlib-prev" onclick="mlibPageChange(-1)" style="padding:4px 14px;border:1px solid var(--border);border-radius:var(--radius-sm);background:#fff;color:var(--text-secondary);cursor:pointer;font-size:13px;">‹</button>
         <span id="mlib-page-info" style="font-size:12px;color:var(--text-hint);min-width:70px;text-align:center;"></span>
-        <button id="mlib-next" onclick="mlibPageChange(1)" style="padding:5px 16px;border:1px solid var(--border);border-radius:6px;background:var(--bg-input);color:var(--text-primary);cursor:pointer;font-size:14px;">›</button>
+        <button id="mlib-next" onclick="mlibPageChange(1)" style="padding:4px 14px;border:1px solid var(--border);border-radius:var(--radius-sm);background:#fff;color:var(--text-secondary);cursor:pointer;font-size:13px;">›</button>
       </div>
 
       <!-- Floating detail card (shown on card click) -->
-      <div id="mlib-detail-card" style="display:none;position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:360px;background:#f4f6fb;border:none;border-radius:16px;box-shadow:0 20px 70px rgba(0,0,0,.55),0 0 0 1px rgba(255,255,255,.12);z-index:10;overflow:hidden;flex-direction:column;" onclick="event.stopPropagation()">
-        <!-- Card 3D preview — light bg -->
-        <div style="height:220px;position:relative;background:linear-gradient(145deg,#e8eef8 0%,#f0f4fc 100%);">
+      <div id="mlib-detail-card" style="display:none;position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:340px;background:#fff;border:1px solid var(--border);border-radius:var(--radius-lg);box-shadow:0 8px 32px rgba(0,0,0,.14);z-index:10;overflow:hidden;flex-direction:column;" onclick="event.stopPropagation()">
+        <!-- Card 3D preview -->
+        <div style="height:210px;position:relative;background:var(--bg);">
           <canvas id="mlib-canvas" style="width:100%;height:100%;display:block;"></canvas>
-          <button onclick="closeMlibDetail()" style="position:absolute;top:10px;right:10px;background:rgba(0,0,0,.12);border:none;color:rgba(0,0,0,.5);border-radius:8px;padding:4px 10px;cursor:pointer;font-size:14px;line-height:1.4;backdrop-filter:blur(4px);">✕</button>
-          <div style="position:absolute;bottom:8px;left:50%;transform:translateX(-50%);font-size:10px;color:rgba(0,0,0,.25);pointer-events:none;white-space:nowrap;">拖动旋转 · 滚轮缩放</div>
+          <button onclick="closeMlibDetail()" style="position:absolute;top:8px;right:8px;background:rgba(0,0,0,.07);border:1px solid var(--border);color:var(--text-secondary);border-radius:var(--radius-sm);padding:3px 8px;cursor:pointer;font-size:13px;line-height:1.4;">✕</button>
+          <div style="position:absolute;bottom:6px;left:50%;transform:translateX(-50%);font-size:10px;color:var(--text-hint);pointer-events:none;white-space:nowrap;">拖动旋转 · 滚轮缩放</div>
         </div>
         <!-- Card info + import -->
-        <div style="padding:14px 18px 18px;background:#f4f6fb;">
+        <div style="padding:12px 16px 16px;border-top:1px solid var(--border);">
           <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px;">
-            <span id="mlib-detail-icon" style="font-size:26px;"></span>
+            <span id="mlib-detail-icon" style="font-size:22px;"></span>
             <div>
-              <div id="mlib-name" style="font-size:15px;font-weight:700;color:#1a2035;"></div>
-              <div id="mlib-desc" style="font-size:11px;color:#6b7a99;margin-top:2px;"></div>
+              <div id="mlib-name" style="font-size:13px;font-weight:700;color:var(--text-primary);"></div>
+              <div id="mlib-desc" style="font-size:11px;color:var(--text-hint);margin-top:2px;"></div>
             </div>
           </div>
-          <button id="mlib-load-btn" onclick="loadSelectedBuiltinModel()" style="margin-top:12px;width:100%;padding:10px;background:var(--blue);color:#fff;border:none;border-radius:10px;font-size:14px;font-weight:600;cursor:pointer;letter-spacing:.3px;box-shadow:0 4px 14px rgba(59,130,246,.4);">
+          <button id="mlib-load-btn" onclick="loadSelectedBuiltinModel()" style="margin-top:10px;width:100%;padding:8px;background:var(--blue);color:#fff;border:none;border-radius:var(--radius-md);font-size:13px;font-weight:600;cursor:pointer;">
             导入此模型
           </button>
         </div>
@@ -2115,7 +2115,7 @@ function initMlibRenderer() {
   if (!canvas || mlibRenderer) return;
 
   mlibRenderer = new THREE.WebGLRenderer({ canvas, antialias: true });
-  mlibRenderer.setClearColor(0xeef1f8);
+  mlibRenderer.setClearColor(0xF5F5F7);
   mlibRenderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 
   mlibScene = new THREE.Scene();
