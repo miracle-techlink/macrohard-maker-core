@@ -1030,37 +1030,54 @@ body {
 
 <!-- Model Library Modal -->
 <div id="model-lib-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:2000;backdrop-filter:blur(4px);" onclick="if(event.target===this)closeModelLibrary()">
-  <div id="model-lib-modal" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:900px;max-width:97vw;height:600px;max-height:93vh;background:var(--bg-panel);border-radius:14px;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 24px 80px rgba(0,0,0,.5);">
+<script>
+// Close detail card when clicking outside it inside the modal
+document.addEventListener('DOMContentLoaded', () => {
+  const modal = document.getElementById('model-lib-modal');
+  if (modal) modal.addEventListener('click', e => {
+    const detail = document.getElementById('mlib-detail-card');
+    if (detail && detail.style.display !== 'none' && !detail.contains(e.target) && !e.target.closest('.mlib-card')) {
+      closeMlibDetail();
+    }
+  });
+});
+</script>
+  <div id="model-lib-modal" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:860px;max-width:97vw;height:580px;max-height:93vh;background:var(--bg-panel);border-radius:14px;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 24px 80px rgba(0,0,0,.5);">
     <!-- Header -->
-    <div style="display:flex;align-items:center;padding:15px 20px 13px;border-bottom:1px solid var(--border);flex-shrink:0;gap:10px;">
-      <span style="font-size:17px;font-weight:700;color:var(--text-primary);">📦 内置模型库</span>
+    <div style="display:flex;align-items:center;padding:14px 20px 12px;border-bottom:1px solid var(--border);flex-shrink:0;gap:10px;">
+      <span style="font-size:16px;font-weight:700;color:var(--text-primary);">📦 内置模型库</span>
       <span id="mlib-page-label" style="font-size:12px;color:var(--text-hint);"></span>
       <button onclick="closeModelLibrary()" style="margin-left:auto;background:none;border:none;cursor:pointer;font-size:22px;color:var(--text-hint);line-height:1;padding:0 4px;">×</button>
     </div>
-    <!-- Body: 4×4 grid + right preview panel -->
-    <div style="display:flex;flex:1;overflow:hidden;">
-      <!-- Left: grid + pagination -->
-      <div style="flex:1;display:flex;flex-direction:column;overflow:hidden;padding:14px 14px 10px;">
-        <div id="mlib-grid" style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;flex:1;align-content:start;overflow-y:auto;"></div>
-        <!-- Pagination -->
-        <div id="mlib-pagination" style="display:flex;align-items:center;justify-content:center;gap:8px;padding-top:10px;flex-shrink:0;">
-          <button id="mlib-prev" onclick="mlibPageChange(-1)" style="padding:5px 14px;border:1px solid var(--border);border-radius:6px;background:var(--bg-input);color:var(--text-primary);cursor:pointer;font-size:13px;">‹</button>
-          <span id="mlib-page-info" style="font-size:12px;color:var(--text-hint);min-width:60px;text-align:center;"></span>
-          <button id="mlib-next" onclick="mlibPageChange(1)" style="padding:5px 14px;border:1px solid var(--border);border-radius:6px;background:var(--bg-input);color:var(--text-primary);cursor:pointer;font-size:13px;">›</button>
-        </div>
+    <!-- Body: 4×4 grid -->
+    <div style="flex:1;display:flex;flex-direction:column;overflow:hidden;padding:14px 14px 10px;position:relative;">
+      <div id="mlib-grid" style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;flex:1;align-content:start;overflow-y:auto;"></div>
+      <!-- Pagination -->
+      <div id="mlib-pagination" style="display:flex;align-items:center;justify-content:center;gap:8px;padding-top:10px;flex-shrink:0;">
+        <button id="mlib-prev" onclick="mlibPageChange(-1)" style="padding:5px 16px;border:1px solid var(--border);border-radius:6px;background:var(--bg-input);color:var(--text-primary);cursor:pointer;font-size:14px;">‹</button>
+        <span id="mlib-page-info" style="font-size:12px;color:var(--text-hint);min-width:70px;text-align:center;"></span>
+        <button id="mlib-next" onclick="mlibPageChange(1)" style="padding:5px 16px;border:1px solid var(--border);border-radius:6px;background:var(--bg-input);color:var(--text-primary);cursor:pointer;font-size:14px;">›</button>
       </div>
-      <!-- Right: 3D preview (hidden until card clicked) -->
-      <div id="mlib-preview-panel" style="width:0;flex-shrink:0;border-left:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden;transition:width .2s ease;">
-        <div style="flex:1;position:relative;background:#0d1117;">
+
+      <!-- Floating detail card (shown on card click) -->
+      <div id="mlib-detail-card" style="display:none;position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:440px;background:var(--bg-panel);border:1px solid var(--border);border-radius:14px;box-shadow:0 16px 60px rgba(0,0,0,.7);z-index:10;overflow:hidden;flex-direction:column;" onclick="event.stopPropagation()">
+        <!-- Card 3D preview -->
+        <div style="height:240px;position:relative;background:#0c1018;">
           <canvas id="mlib-canvas" style="width:100%;height:100%;display:block;"></canvas>
-          <button onclick="closeMlibPreview()" style="position:absolute;top:8px;right:8px;background:rgba(0,0,0,.5);border:none;color:#fff;border-radius:6px;padding:3px 9px;cursor:pointer;font-size:13px;">✕</button>
-          <div style="position:absolute;bottom:10px;left:50%;transform:translateX(-50%);font-size:10px;color:rgba(255,255,255,.3);pointer-events:none;white-space:nowrap;">拖动旋转 · 滚轮缩放</div>
+          <button onclick="closeMlibDetail()" style="position:absolute;top:10px;right:10px;background:rgba(0,0,0,.55);border:none;color:rgba(255,255,255,.8);border-radius:8px;padding:4px 10px;cursor:pointer;font-size:14px;line-height:1.4;">✕</button>
+          <div style="position:absolute;bottom:8px;left:50%;transform:translateX(-50%);font-size:10px;color:rgba(255,255,255,.25);pointer-events:none;white-space:nowrap;">拖动旋转 · 滚轮缩放</div>
         </div>
-        <div style="padding:12px 16px;border-top:1px solid var(--border);flex-shrink:0;">
-          <div id="mlib-name" style="font-size:14px;font-weight:600;color:var(--text-primary);margin-bottom:3px;">—</div>
-          <div id="mlib-desc" style="font-size:11px;color:var(--text-hint);margin-bottom:10px;"></div>
-          <button id="mlib-load-btn" onclick="loadSelectedBuiltinModel()" style="width:100%;padding:8px;background:var(--blue);color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;">
-            加载此模型
+        <!-- Card info + import -->
+        <div style="padding:16px 18px 18px;">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;">
+            <span id="mlib-detail-icon" style="font-size:24px;"></span>
+            <div>
+              <div id="mlib-name" style="font-size:15px;font-weight:700;color:var(--text-primary);"></div>
+              <div id="mlib-desc" style="font-size:11px;color:var(--text-hint);margin-top:2px;"></div>
+            </div>
+          </div>
+          <button id="mlib-load-btn" onclick="loadSelectedBuiltinModel()" style="margin-top:10px;width:100%;padding:10px;background:var(--blue);color:#fff;border:none;border-radius:9px;font-size:14px;font-weight:600;cursor:pointer;letter-spacing:.3px;">
+            导入此模型
           </button>
         </div>
       </div>
@@ -1981,16 +1998,20 @@ function openModelLibrary() {
 }
 
 function closeModelLibrary() {
+  closeMlibDetail();
   document.getElementById('model-lib-overlay').style.display = 'none';
-  closeMlibPreview();
-  if (mlibAnimId) { cancelAnimationFrame(mlibAnimId); mlibAnimId = null; }
-  if (mlibRenderer) { mlibRenderer.dispose(); mlibRenderer = null; mlibScene = null; mlibCamera = null; mlibMesh = null; }
 }
 
 function closeMlibPreview() {
-  const panel = document.getElementById('mlib-preview-panel');
-  if (panel) panel.style.width = '0';
+  closeMlibDetail();
+}
+
+function closeMlibDetail() {
+  const card = document.getElementById('mlib-detail-card');
+  if (card) card.style.display = 'none';
   document.querySelectorAll('.mlib-card').forEach(c => c.classList.remove('active'));
+  if (mlibAnimId) { cancelAnimationFrame(mlibAnimId); mlibAnimId = null; }
+  if (mlibRenderer) { mlibRenderer.dispose(); mlibRenderer = null; mlibScene = null; mlibCamera = null; mlibMesh = null; }
   mlibSelected = null;
 }
 
@@ -2037,11 +2058,20 @@ function selectMlibModel(model, cardEl) {
   mlibSelected = model;
   document.querySelectorAll('.mlib-card').forEach(c => c.classList.remove('active'));
   cardEl.classList.add('active');
-  document.getElementById('mlib-name').textContent = model.icon + ' ' + model.name;
+
+  // Update detail card content
+  document.getElementById('mlib-detail-icon').textContent = model.icon;
+  document.getElementById('mlib-name').textContent = model.name;
   document.getElementById('mlib-desc').textContent = model.desc;
-  // Open preview panel
-  const panel = document.getElementById('mlib-preview-panel');
-  panel.style.width = '320px';
+
+  // Show detail card
+  const detailCard = document.getElementById('mlib-detail-card');
+  detailCard.style.display = 'flex';
+
+  // Reset renderer for new model
+  if (mlibAnimId) { cancelAnimationFrame(mlibAnimId); mlibAnimId = null; }
+  if (mlibRenderer) { mlibRenderer.dispose(); mlibRenderer = null; mlibScene = null; mlibCamera = null; mlibMesh = null; }
+
   initMlibRenderer();
   loadMlibPreview(model.url);
 }
