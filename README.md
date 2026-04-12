@@ -1,123 +1,124 @@
 # CF-Path-Planner
 
-**Stress-driven continuous carbon fiber path planning for multi-axis 3D printing.**
+**应力驱动的连续碳纤维多轴3D打印路径规划工具**
 
-A full-stack tool that combines FEA-based stress analysis, geodesic surface path planning, and topology optimization to generate optimized fiber deposition paths for continuous carbon fiber (CCF) reinforced polymer 3D printing.
+结合有限元分析（FEA）、曲面测地线路径规划和拓扑优化，为连续碳纤维增强聚合物（CCF）3D打印生成最优纤维沉积路径的全栈工具。
 
 ---
 
-## Features
+## 功能特性
 
-- **FEA Solver** — Linear elastic solver (isotropic & orthotropic) via `scikit-fem`, supporting per-element fiber orientation
-- **Geodesic Path Planning** — Stress-field-guided geodesic paths on curved surfaces (cylinder, cone, arbitrary mesh)
-- **XY+A Path Planner** — 4-axis (XY+A rotary) waypoint generation for helical winding, hoop/axial patterns, and custom fiber angles
-- **Topology Optimization** — SIMP-based TO for optimal material distribution
-- **G-code Generator** — Outputs machine-ready G-code for Klipper-based multi-axis printers
-- **Interactive Web UI** — Three.js visualization with real-time path display, layer control, and mesh inspection
+- **FEA 求解器** — 基于 `scikit-fem` 的线弹性求解器，支持各向同性与正交各向异性材料，逐单元纤维取向
+- **测地线路径规划** — 应力场引导的曲面测地线路径（圆柱、锥面、任意网格）
+- **XY+A 路径规划器** — 四轴（XY+A 旋转）航点生成，支持螺旋缠绕、环向/轴向模式及自定义纤维角度
+- **拓扑优化** — 基于 SIMP 法的材料分布优化
+- **G-code 生成器** — 输出适用于 Klipper 多轴打印机的机器码
+- **交互式 Web UI** — 基于 Three.js 的可视化界面，支持实时路径显示、分层控制和网格查看
 
-## Architecture
+## 项目结构
 
 ```
 cf-path-planner/
-├── cfpp/                  # Core Python library
-│   ├── solver/            # FEA: isotropic & orthotropic elastic solvers
-│   ├── surface/           # Geodesic path planning, stress field extraction, surface planner v2
-│   ├── mesh/              # Mesh generation (gmsh-based)
-│   ├── topo/              # SIMP topology optimization
-│   ├── optimizer/         # Fiber layup optimizer
-│   └── gcode/             # G-code post-processing
+├── cfpp/                  # 核心 Python 库
+│   ├── solver/            # FEA：各向同性与正交各向异性弹性求解器
+│   ├── surface/           # 测地线路径规划、应力场提取、曲面规划器 v2
+│   ├── mesh/              # 网格生成（基于 gmsh）
+│   ├── topo/              # SIMP 拓扑优化
+│   ├── optimizer/         # 纤维铺层优化器
+│   └── gcode/             # G-code 后处理
 ├── webapp/
-│   └── server.py          # HTTP server: static files + REST API
+│   └── server.py          # HTTP 服务器：静态文件 + REST API
 ├── visualization/
-│   ├── index.html         # Three.js frontend (2400+ lines, no build step)
-│   ├── lib/               # three.min.js, OrbitControls.js
-│   └── data/              # Live JSON data from pipeline
+│   ├── index.html         # Three.js 前端（2400+ 行，无需构建）
+│   ├── lib/               # three.min.js、OrbitControls.js
+│   └── data/              # Pipeline 实时 JSON 数据
 ├── examples/
-│   ├── cylinder/          # Helical winding examples
-│   ├── cone/              # Cone surface examples
-│   ├── cantilever/        # Cantilever beam topology optimization
-│   └── leg_link/          # Robotic leg link fiber layout
-├── tests/                 # Unit + integration tests
-├── klipper/               # Klipper printer config files
-└── docs/                  # LaTeX reports: geodesic theory, FEA, experiments
+│   ├── cylinder/          # 螺旋缠绕示例
+│   ├── cone/              # 锥面示例
+│   ├── cantilever/        # 悬臂梁拓扑优化
+│   └── leg_link/          # 机器人腿杆纤维铺层
+├── tests/                 # 单元测试与集成测试
+├── klipper/               # Klipper 打印机配置文件
+└── docs/                  # LaTeX 报告：测地线理论、FEA、实验方案
 ```
 
-## Quick Start
+## 快速开始
 
-### Requirements
+### 依赖安装
 
 ```bash
 pip install numpy scipy meshio scikit-fem gmsh
 ```
 
-### Run the Web App
+### 启动 Web 应用
 
 ```bash
 cd webapp
 python server.py
-# Open http://localhost:8080
+# 打开浏览器访问 http://localhost:8080
 ```
 
-The web UI exposes:
-- `POST /api/mesh` — Generate mesh from model parameters
-- `POST /api/fea` — Run FEA and extract stress field
-- `POST /api/xyza_paths` — Compute fiber winding paths
-- `POST /api/gcode` — Generate G-code
-- `POST /api/upload_stl` — Upload custom STL
+Web UI 提供以下接口：
+- `POST /api/mesh` — 根据模型参数生成网格
+- `POST /api/fea` — 运行 FEA 并提取应力场
+- `POST /api/xyza_paths` — 计算纤维缠绕路径
+- `POST /api/gcode` — 生成 G-code
+- `POST /api/upload_stl` — 上传自定义 STL 文件
 
-### Run Path Planning Directly
+### 直接调用路径规划
 
 ```python
 from cfpp.surface.planner_v2 import XYAPathPlanner
 
 planner = XYAPathPlanner(a_offset_z=50.0)
 waypoints = planner.helical_path(radius=15, length=80, winding_angle=45, n_layers=4)
-# Returns list of (x, y_model, z_model, a_deg) tuples
+# 返回 (x, y_model, z_model, a_deg) 元组列表
 ```
 
-### Run Examples
+### 运行示例
 
 ```bash
 cd examples/cylinder
-python run_surface.py      # Geodesic paths on cylinder surface
-python run_all_phases.py   # Full pipeline: mesh → FEA → paths → G-code
+python run_surface.py      # 圆柱曲面上的测地线路径
+python run_all_phases.py   # 完整流程：网格 → FEA → 路径 → G-code
 ```
 
-## Pipeline Overview
+## 流程总览
 
 ```
-STL / Parametric Model
-        ↓
-   Mesh Generation (gmsh)
-        ↓
-   FEA Stress Analysis (scikit-fem)
-        ↓
-   Stress Field → Principal Directions
-        ↓
-   Geodesic Path Planning on Surface
-        ↓
-   XY+A Waypoint Generation
-        ↓
-   G-code Output (Klipper)
+STL / 参数化模型
+       ↓
+  网格生成 (gmsh)
+       ↓
+  FEA 应力分析 (scikit-fem)
+       ↓
+  应力场 → 主方向提取
+       ↓
+  曲面测地线路径规划
+       ↓
+  XY+A 航点生成
+       ↓
+  G-code 输出 (Klipper)
 ```
 
-## Hardware Target
+## 硬件目标
 
-Designed for **XY+A** multi-axis FFF printers:
-- X axis: axial translation along fiber direction
-- Y axis: nozzle transverse
-- A axis: rotary platform (part rotation)
+适用于 **XY+A** 多轴 FFF 打印机：
+- X 轴：沿纤维方向的轴向平移
+- Y 轴：喷嘴横向移动
+- A 轴：旋转平台（零件旋转）
 
-Klipper configuration examples in `klipper/`.
+Klipper 配置示例见 `klipper/` 目录。
 
-## Documentation
+## 技术文档
 
-Technical reports (PDF + LaTeX source) in `docs/`:
-- `geodesic_theory` — Geodesic path theory on curved surfaces
-- `surface_geodesic_report` — Surface geodesic experiments
-- `full_report` — Complete algorithm report
+`docs/` 目录包含 PDF 及 LaTeX 源文件：
+- `geodesic_theory` — 曲面测地线路径理论
+- `surface_geodesic_report` — 曲面测地线实验报告
+- `full_report` — 完整算法报告
+- `experiment_plan` — 实验方案
 
-## Tests
+## 测试
 
 ```bash
 cd tests
@@ -125,6 +126,6 @@ python test_xyza_backend.py
 python benchmark_webapp.py
 ```
 
-## License
+## 许可证
 
 MIT
