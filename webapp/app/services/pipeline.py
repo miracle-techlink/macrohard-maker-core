@@ -4,6 +4,7 @@
 """
 from __future__ import annotations
 
+import logging
 import math
 import os
 import subprocess
@@ -13,6 +14,8 @@ import time
 import uuid
 
 import numpy as np
+
+logger = logging.getLogger("cfpp")
 
 # Project root（webapp/ 的上一级）
 _HERE        = os.path.dirname(os.path.abspath(__file__))
@@ -36,6 +39,7 @@ def _tmpfile(suffix: str) -> str:
 def run_mesh(params: dict, job_state, progress_cb=None) -> dict:
     """生成网格（同步，供 geometry router 直接调用或作为短任务）。"""
     model     = params.get("model", "cylinder")
+    logger.info(f"[mesh] model={model} mesh_size={params.get('mesh_size',3.0)}")
     mesh_size = float(params.get("mesh_size", 3.0))
     mesh_path = _tmpfile(".msh")
 
@@ -118,6 +122,7 @@ def run_plan(params: dict, job_state, progress_cb=None) -> dict:
     r_inner         = float(params.get("r_inner", 0.0))
     a_offset_z      = float(params.get("a_offset_z", 50.0))
 
+    logger.info(f"[plan] strategy={strategy} angle={angle} n_layers={n_layers} r_inner={r_inner}")
     if progress_cb:
         progress_cb("plan_init", 5, "初始化规划器...")
 
@@ -127,20 +132,28 @@ def run_plan(params: dict, job_state, progress_cb=None) -> dict:
     auto_radius = float(np.percentile(radii, 90)) if len(radii) else 25.0
     radius = float(params.get("radius", auto_radius))
     length = float(params.get("length", float(centroids[:, 2].max() - centroids[:, 2].min())))
+    logger.info(f"[plan] geometry: radius={radius:.1f} length={length:.1f}")
 
     if progress_cb:
         progress_cb("plan_paths", 15, f"combined_print_paths r={radius:.1f} l={length:.1f}...")
 
     planner = XYAPathPlanner(a_offset_y=0.0, a_offset_z=a_offset_z)
     t0 = time.time()
-    waypoints = planner.combined_print_paths(
+    fill_wps = planner.layer_rectilinear_paths(
         radius=radius, length=length, r_inner=r_inner,
-        winding_angle_deg=angle, n_cf_layers=n_layers, n_walls=n_walls,
-        infill_density=infill_density,
         layer_height=layer_height, extrusion_width=ext_width,
+        n_walls=n_walls, infill_density=infill_density,
     )
+    cf_wps = planner.constant_angle_winding(
+        radius=radius, length=length,
+        angle_deg=angle, n_layers=n_layers,
+        fiber_width=ext_width,
+    )
+    n_fill_wps = len(fill_wps)
+    waypoints = fill_wps + cf_wps
     t_plan = time.time() - t0
 
+    logger.info(f"[plan] paths done: fill={n_fill_wps} cf={len(cf_wps)} total={len(waypoints)} in {t_plan:.2f}s")
     if progress_cb:
         progress_cb("plan_convert", 60, f"{len(waypoints)} 路径点，转换 3D...")
 
@@ -161,36 +174,27 @@ def run_plan(params: dict, job_state, progress_cb=None) -> dict:
 
     import json
 
-    # 层切分 — 与 server.py combined 策略一致
+    # 层切分 — fill和fiber边界已知（n_fill_wps），按 jump 细分段
     jump_thresh = radius * 0.5
     all_segs, layer_types = [], []
     current_path = [pts_3d[0]]
-    in_fiber_phase = False
-    current_type = "fill"
+    current_type = "fill" if 0 < n_fill_wps else "fiber"
 
     for i in range(1, len(pts_3d)):
+        current_type = "fill" if i < n_fill_wps else "fiber"
         p0, p1 = pts_3d[i-1], pts_3d[i]
-        dx = abs(p1[2] - p0[2])   # z = x_axis
         d3 = math.sqrt(sum((p1[k]-p0[k])**2 for k in range(3)))
-        if in_fiber_phase:
-            new_layer = d3 > jump_thresh
-        else:
-            new_layer = (dx > layer_height * 0.6) or (d3 > jump_thresh)
-        if new_layer:
+        if d3 > jump_thresh:
             if len(current_path) >= 2:
+                seg_type = "fill" if (i - 1) < n_fill_wps else "fiber"
                 all_segs.append(current_path)
-                layer_types.append(current_type)
-            if not in_fiber_phase and current_type == "fill":
-                a_prev = waypoints[i-1][3]
-                a_cur  = waypoints[i][3]
-                if abs(a_cur - a_prev) > 10 or (i > len(waypoints) * 0.4 and current_type == "fill"):
-                    in_fiber_phase = True
-            current_type = "fiber" if in_fiber_phase else "fill"
+                layer_types.append(seg_type)
             current_path = []
         current_path.append(p1)
     if len(current_path) >= 2:
+        seg_type = "fill" if (len(pts_3d) - 1) < n_fill_wps else "fiber"
         all_segs.append(current_path)
-        layer_types.append(current_type)
+        layer_types.append(seg_type)
 
     # 可视化预算采样（最多 1342 段，与旧版一致）
     MAX_VIS = 1342
@@ -238,12 +242,30 @@ def run_plan(params: dict, job_state, progress_cb=None) -> dict:
     job_state.vis_path       = layers_path
 
     diffs = np.diff(wp_arr[:, :3], axis=0)
-    total_len  = float(np.sum(np.linalg.norm(diffs, axis=1)))
+    seg_lens = np.linalg.norm(diffs, axis=1)
+    total_len  = float(np.sum(seg_lens))
     fill_count  = sum(1 for t in layer_types if t == "fill")
     fiber_count = len(layer_types) - fill_count
 
+    # 填充率 Vf = fill路径长 × extrusion_width × layer_height / 圆柱体积
+    fill_segs_idx = [i for i,t in enumerate(layer_types) if t == "fill"]
+    fill_len = 0.0
+    for i in fill_segs_idx:
+        seg = all_segs[i]
+        for j in range(1, len(seg)):
+            fill_len += math.sqrt(sum((seg[j][k]-seg[j-1][k])**2 for k in range(3)))
+    r_out = radius
+    r_in  = r_inner
+    cyl_vol = math.pi * (r_out**2 - r_in**2) * length
+    fill_vol = fill_len * ext_width * layer_height
+    fill_vf  = (fill_vol / cyl_vol) if cyl_vol > 0 else 0.0
+
+    elapsed = time.time() - t0
+    logger.info(f"[plan] done: {len(waypoints)} wps, {len(layers_vis)} vis-segs, "
+                f"fill={fill_count} fiber={fiber_count}, Vf={fill_vf*100:.1f}%, {elapsed:.2f}s")
+
     if progress_cb:
-        progress_cb("plan_done", 100, f"完成 {time.time()-t0:.2f}s")
+        progress_cb("plan_done", 100, f"完成 {elapsed:.2f}s  {len(waypoints)} 路径点  Vf={fill_vf*100:.1f}%")
 
     return {
         "status":           "ok",
@@ -258,7 +280,9 @@ def run_plan(params: dict, job_state, progress_cb=None) -> dict:
         "angle":            angle,
         "n_layers":         n_layers,
         "total_length_mm":  round(total_len, 1),
-        "plan_elapsed_s":   round(t_plan, 2),
+        "plan_elapsed_s":   round(elapsed, 2),
+        "fill_vf":          round(fill_vf, 4),
+        "fill_vf_pct":      round(fill_vf * 100, 1),
     }
 
 
@@ -269,6 +293,7 @@ def run_gcode(params: dict, job_state, progress_cb=None) -> dict:
     if not job_state.waypoints_path or not os.path.exists(job_state.waypoints_path):
         raise RuntimeError("No waypoints. Submit a plan job first.")
 
+    logger.info(f"[gcode] feed={params.get('feed_rate',3000)} layer_h={params.get('layer_height',0.18)}")
     if progress_cb:
         progress_cb("gcode_load", 5, "加载路径点...")
 
@@ -326,8 +351,11 @@ def run_gcode(params: dict, job_state, progress_cb=None) -> dict:
     diffs   = np.diff(wps_arr[:, :3], axis=0)
     fiber_mm = float(np.sum(np.linalg.norm(diffs, axis=1)))
 
+    elapsed_gc = time.time() - t0
+    logger.info(f"[gcode] done: {len(waypoints)} wps, {gcode_str.count(chr(10))} lines, "
+                f"{len(gcode_str)//1024}KB, {elapsed_gc:.2f}s")
     if progress_cb:
-        progress_cb("gcode_done", 100, f"完成 {time.time()-t0:.2f}s")
+        progress_cb("gcode_done", 100, f"完成 {elapsed_gc:.2f}s")
 
     return {
         "status":      "ok",
@@ -338,7 +366,7 @@ def run_gcode(params: dict, job_state, progress_cb=None) -> dict:
         "a_min":       round(float(a_vals.min()), 1) if len(a_vals) else 0.0,
         "a_max":       round(float(a_vals.max()), 1) if len(a_vals) else 0.0,
         "file":        "/data/output.gcode",
-        "elapsed_s":   round(time.time()-t0, 2),
+        "elapsed_s":   round(elapsed_gc, 2),
     }
 
 
