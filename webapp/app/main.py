@@ -23,7 +23,7 @@ from .services import pipeline as svc
 
 # ── 路径 ─────────────────────────────────────────────────────────────────────
 _HERE        = os.path.dirname(os.path.abspath(__file__))
-PROJECT_ROOT = os.path.normpath(os.path.join(_HERE, "..", "..", ".."))
+PROJECT_ROOT = os.path.normpath(os.path.join(_HERE, "..", ".."))
 VIZ_DIR      = os.path.join(PROJECT_ROOT, "visualization")
 DATA_DIR     = os.path.join(VIZ_DIR, "data")
 os.makedirs(DATA_DIR, exist_ok=True)
