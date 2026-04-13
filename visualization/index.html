@@ -428,6 +428,27 @@ body {
 .mlib-card-name { font-size: 12px; font-weight: 600; color: var(--text-primary); }
 .mlib-card-desc { font-size: 10px; color: var(--text-hint); line-height: 1.3; }
 
+/* Print orientation controls */
+.rp-orient-btns { display: flex; gap: 5px; margin-bottom: 7px; }
+.rp-orient-btn {
+  flex: 1; padding: 5px 0; font-size: 11px; font-weight: 600;
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  background: var(--bg-input); color: var(--text-primary); cursor: pointer;
+  transition: border-color .15s, background .15s;
+}
+.rp-orient-btn:hover { border-color: var(--blue); background: var(--blue-light); color: var(--blue); }
+.rp-orient-btn.accent { background: var(--blue); border-color: var(--blue); color: #fff; }
+.rp-orient-btn.accent:hover { background: #0e7de0; }
+.rp-orient-axis { display: flex; align-items: center; gap: 5px; margin-bottom: 4px; }
+.rp-orient-axis-label { font-size: 11px; font-weight: 700; color: var(--text-hint); width: 20px; text-align: center; }
+.rp-support-preview-btn {
+  padding: 4px 10px; font-size: 11px; font-weight: 600;
+  background: var(--blue-light); border: 1px solid var(--blue);
+  color: var(--blue); border-radius: var(--radius-sm); cursor: pointer;
+  transition: background .15s; white-space: nowrap;
+}
+.rp-support-preview-btn:hover { background: var(--blue); color: #fff; }
+
 /* STL upload drop zone */
 .rp-stl-drop {
   border: 2px dashed var(--border); border-radius: var(--radius-md);
@@ -892,6 +913,40 @@ body {
         </div>
       </div>
 
+      <!-- Print Orientation -->
+      <div class="rp-section">
+        <div class="rp-section-title">打印方向</div>
+        <div class="rp-orient-btns">
+          <button class="rp-orient-btn accent" id="auto-orient-btn" onclick="autoOrient()">自动最优</button>
+          <button class="rp-orient-btn" onclick="resetOrientation()">重置方向</button>
+        </div>
+        <div id="orient-score" style="font-size:11px;color:var(--text-hint);margin-bottom:4px;display:none"></div>
+        <div class="rp-orient-axis">
+          <span class="rp-orient-axis-label" style="color:#ff5555">X</span>
+          <input type="range" class="rp-param-slider" id="orient-rx" min="-180" max="180" value="0"
+            oninput="syncOrientSlider('x',this.value)" style="flex:1">
+          <input type="number" class="rp-param-input" id="orient-rx-val" value="0" min="-180" max="180"
+            oninput="syncOrientInput('x',this.value)" style="width:44px">
+          <span class="rp-param-unit">°</span>
+        </div>
+        <div class="rp-orient-axis">
+          <span class="rp-orient-axis-label" style="color:#44cc44">Y</span>
+          <input type="range" class="rp-param-slider" id="orient-ry" min="-180" max="180" value="0"
+            oninput="syncOrientSlider('y',this.value)" style="flex:1">
+          <input type="number" class="rp-param-input" id="orient-ry-val" value="0" min="-180" max="180"
+            oninput="syncOrientInput('y',this.value)" style="width:44px">
+          <span class="rp-param-unit">°</span>
+        </div>
+        <div class="rp-orient-axis">
+          <span class="rp-orient-axis-label" style="color:#4488ff">Z</span>
+          <input type="range" class="rp-param-slider" id="orient-rz" min="-180" max="180" value="0"
+            oninput="syncOrientSlider('z',this.value)" style="flex:1">
+          <input type="number" class="rp-param-input" id="orient-rz-val" value="0" min="-180" max="180"
+            oninput="syncOrientInput('z',this.value)" style="width:44px">
+          <span class="rp-param-unit">°</span>
+        </div>
+      </div>
+
       <!-- Print Parameters: rectilinear fill + CF winding -->
       <div class="rp-section">
         <div class="rp-section-title">CF 缠绕参数</div>
@@ -962,11 +1017,24 @@ body {
       <!-- Support -->
       <div class="rp-section">
         <div class="rp-section-title">支撑结构</div>
-        <select class="rp-dropdown" id="rp-support" onchange="document.getElementById('sb-support').textContent=this.options[this.selectedIndex].text">
-          <option>无</option>
-          <option>普通支撑</option>
-          <option>树状支撑</option>
-        </select>
+        <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px">
+          <select class="rp-dropdown" id="rp-support" style="flex:1"
+            onchange="clearSupportPreview();document.getElementById('sb-support').textContent=this.options[this.selectedIndex].text">
+            <option value="none">无</option>
+            <option value="column">普通柱状</option>
+            <option value="tree">树状支撑</option>
+          </select>
+          <button class="rp-support-preview-btn" onclick="generateSupportPreview()">预览</button>
+        </div>
+        <div class="rp-param-row">
+          <span class="rp-param-label">悬垂角</span>
+          <div class="rp-param-value">
+            <input type="number" class="rp-param-input" id="rp-overhang-angle" value="45" min="15" max="75"
+              style="width:40px" oninput="clearSupportPreview()">
+            <span class="rp-param-unit">°</span>
+          </div>
+        </div>
+        <div id="support-stats" style="font-size:11px;color:var(--text-hint);margin-top:4px;display:none"></div>
       </div>
 
       <a class="rp-more-link" href="#" onclick="event.preventDefault();openPrintSettings()">更多设置...</a>
@@ -1099,6 +1167,11 @@ document.addEventListener('DOMContentLoaded', () => {
   <div class="status-item">支撑: <span id="sb-support">无</span></div>
   <div class="status-sep"></div>
   <div class="status-item" id="sb-fiber-info">纤维路径: 未生成</div>
+  <div style="flex:1"></div>
+  <button onclick="toggleLogPanel()" title="后端日志"
+    style="background:none;border:1px solid var(--border);border-radius:4px;
+           color:var(--text-secondary);font-size:11px;padding:1px 8px;cursor:pointer;
+           line-height:20px;white-space:nowrap;">⬡ 日志</button>
 </div>
 
 <!-- ===== PRINT SETTINGS MODAL ===== -->
@@ -1601,6 +1674,34 @@ document.addEventListener('DOMContentLoaded', () => {
 <!-- Toast notification -->
 <div class="toast" id="toast"></div>
 
+<!-- ── Backend Log Panel ─────────────────────────────────────────────── -->
+<!-- Log panel: draggable -->
+<div id="log-panel" style="
+  display:none; position:fixed; left:56px; top:calc(100vh - 340px);
+  width:560px; height:280px;
+  background:#0f1117; border:1px solid #2a2d3a; border-radius:8px;
+  box-shadow:0 8px 32px rgba(0,0,0,.55); z-index:3000;
+  flex-direction:column; font-family:'JetBrains Mono',Consolas,monospace; font-size:11px;">
+  <div id="log-drag-handle" style="display:flex;align-items:center;justify-content:space-between;
+              padding:5px 10px;border-bottom:1px solid #2a2d3a;background:#161820;
+              border-radius:8px 8px 0 0;flex-shrink:0;cursor:grab;user-select:none;">
+    <span style="color:#8b8fa8;font-size:11px;font-weight:600;letter-spacing:.5px;">
+      ⬡ BACKEND LOGS <span style="color:#333;font-size:9px;margin-left:4px;">⠿ 拖拽</span>
+    </span>
+    <div style="display:flex;gap:6px;align-items:center;">
+      <span id="log-status" style="font-size:10px;color:#555;"></span>
+      <button onclick="copyAllLogs(this)" title="复制全部" style="background:none;border:1px solid #333;
+        color:#666;padding:1px 7px;border-radius:4px;font-size:10px;cursor:pointer;transition:transform 0.1s;">复制</button>
+      <button onclick="clearLogPanel(this)" style="background:none;border:1px solid #333;
+        color:#666;padding:1px 7px;border-radius:4px;font-size:10px;cursor:pointer;">清空</button>
+      <button onclick="toggleLogPanel()" style="background:none;border:none;
+        color:#555;font-size:14px;cursor:pointer;line-height:1;">✕</button>
+    </div>
+  </div>
+  <div id="log-lines" style="flex:1;overflow-y:auto;padding:6px 8px;
+       user-select:text;-webkit-user-select:text;cursor:text;"></div>
+</div>
+
 <!-- Three.js -->
 <script src="lib/three.min.js"></script>
 <script src="lib/OrbitControls.js"></script>
@@ -1616,13 +1717,19 @@ const appState = {
   layerHeight: 0.18,
   infillDensity: 20,
   gcodeGenerated: false,
+  serverMeshReady: false,   // true once /api/mesh, /api/load_builtin, or /api/upload_stl succeeds
+  geomRadius: 25,
+  geomLength: 50,
+  geomRInner: 0,
 };
 
 // ============================
 // THREE.JS SCENE
 // ============================
 let renderer, scene, camera, orbitControls;
-let cylinderMesh, helixGroup;
+let cylinderMesh, helixGroup, supportGroup;
+let stlPositionsGlobal = null;   // raw Float32Array for orientation/support calc
+let modelOrient = { rx: 0, ry: 0, rz: 0 };
 
 function initThree() {
   const container = document.getElementById('three-canvas-container');
@@ -1631,10 +1738,11 @@ function initThree() {
   const h = container.clientHeight;
 
   renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true });
-  renderer.setPixelRatio(window.devicePixelRatio);
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.setSize(w, h);
   renderer.setClearColor(0x1A1A2E);
   renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
   scene = new THREE.Scene();
   scene.fog = new THREE.Fog(0x1A1A2E, 200, 500);
@@ -1649,15 +1757,19 @@ function initThree() {
   orbitControls.target.set(0, 20, 0);
   orbitControls.update();
 
-  // Lighting
-  scene.add(new THREE.AmbientLight(0xffffff, 0.4));
-  const dirLight = new THREE.DirectionalLight(0xffffff, 0.9);
-  dirLight.position.set(50, 80, 60);
+  // Lighting (tuned for MeshStandardMaterial)
+  scene.add(new THREE.AmbientLight(0xffffff, 0.55));
+  const dirLight = new THREE.DirectionalLight(0xffffff, 1.4);
+  dirLight.position.set(60, 100, 70);
   dirLight.castShadow = true;
+  dirLight.shadow.mapSize.set(1024, 1024);
   scene.add(dirLight);
-  const fillLight = new THREE.DirectionalLight(0x4488ff, 0.3);
-  fillLight.position.set(-40, 20, -50);
+  const fillLight = new THREE.DirectionalLight(0x88bbff, 0.5);
+  fillLight.position.set(-50, 30, -60);
   scene.add(fillLight);
+  const rimLight = new THREE.DirectionalLight(0xffffff, 0.3);
+  rimLight.position.set(0, -20, -80);
+  scene.add(rimLight);
 
   // Grid
   const grid = new THREE.GridHelper(120, 24, 0x2a2a44, 0x222236);
@@ -1699,8 +1811,11 @@ function buildAxes() {
 }
 
 function buildCylinder(radius, length) {
-  const r = radius || 12;
-  const h = length || 40;
+  const r = radius || 25;
+  const h = length || 50;
+  appState.geomRadius = r;
+  appState.geomLength = h;
+  appState.geomRInner = appState.geomRInner || 0;
   const geo = new THREE.CylinderGeometry(r, r, h, 64, 1, false);
   const mat = new THREE.MeshPhongMaterial({
     color: 0x2a2a3e,
@@ -1713,11 +1828,9 @@ function buildCylinder(radius, length) {
   cylinderMesh.castShadow = true;
   scene.add(cylinderMesh);
 
-  // Wireframe
-  const wf = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({
-    color: 0x4466bb, wireframe: true, transparent: true, opacity: 0.12
-  }));
-  cylinderMesh.add(wf);
+  const edges = new THREE.EdgesGeometry(geo, 20);
+  cylinderMesh.add(new THREE.LineSegments(edges,
+    new THREE.LineBasicMaterial({ color: 0x6aabff, transparent: true, opacity: 0.18 })));
 
   document.getElementById('obj-list-empty').style.display = 'none';
   document.getElementById('obj-list-cylinder').style.display = 'flex';
@@ -1976,12 +2089,47 @@ let mlibRenderer = null, mlibScene = null, mlibCamera = null;
 let mlibAnimId = null;
 let mlibMesh = null;
 
+const MLIB_FALLBACK = [
+  {id:'hollow_tube',  name:'空心圆管',   desc:'基础圆柱管件，CF缠绕演示',  icon:'🔵'},
+  {id:'t_joint',      name:'T形三通',    desc:'管道三通接头',              icon:'🔀'},
+  {id:'cross_joint',  name:'十字四通',   desc:'X形管道交叉接头',           icon:'➕'},
+  {id:'elbow_pipe',   name:'90°弯管',    desc:'直角弯头，各向异性明显',    icon:'↩️'},
+  {id:'y_junction',   name:'Y形分叉',    desc:'45°管道分叉接头',           icon:'🍴'},
+  {id:'flange',       name:'法兰盘',     desc:'标准管道法兰连接件',         icon:'🔩'},
+  {id:'s_curve_pipe', name:'S形弯管',    desc:'双向弯曲管道',              icon:'〰️'},
+  {id:'helix_coil',   name:'螺旋线圈',   desc:'多圈螺旋管，弹簧形态',      icon:'🌀'},
+  {id:'l_bracket',    name:'L形支架',    desc:'结构支架，应力集中典型',     icon:'📐'},
+  {id:'i_beam',       name:'工字梁',     desc:'标准工字截面结构梁',         icon:'🏗️'},
+  {id:'wing_spar',    name:'翼梁截面',   desc:'航空矩形中空翼梁',           icon:'✈️'},
+  {id:'saddle_bracket',name:'U形夹座',   desc:'管道鞍形夹紧支座',           icon:'🐎'},
+  {id:'box_frame',    name:'矩形箱梁',   desc:'封闭矩形截面箱型梁',         icon:'📦'},
+  {id:'rect_frame',   name:'矩形框架',   desc:'平面矩形边框结构',           icon:'⬜'},
+  {id:'lattice_cube', name:'点阵框架',   desc:'空间桁架十二棱骨架',         icon:'🔲'},
+  {id:'curved_beam',  name:'C形曲梁',    desc:'半圆环形曲线梁',             icon:'🌙'},
+  {id:'pressure_vessel',name:'压力容器', desc:'球端封头圆柱壳体',           icon:'🫙'},
+  {id:'dome',         name:'半球壳',     desc:'薄壁半球形封头',             icon:'⛺'},
+  {id:'sphere_shell', name:'球形壳',     desc:'完整球形薄壁壳体',           icon:'🔮'},
+  {id:'thermos',      name:'双层筒',     desc:'双壁圆柱容器',              icon:'🧊'},
+  {id:'cone_shell',   name:'锥形壳',     desc:'空心圆锥台壳体',             icon:'🔺'},
+  {id:'nozzle',       name:'收缩喷管',   desc:'航空发动机缩放喷嘴',         icon:'🚀'},
+  {id:'propeller_hub',name:'四轴桨座',   desc:'无人机电机座 + 四臂',        icon:'🚁'},
+  {id:'hex_tube',     name:'六棱管',     desc:'六边形截面蜂窝管件',         icon:'⬡'},
+  {id:'bearing_housing',name:'轴承座',   desc:'圆柱滚子轴承外壳',           icon:'⚙️'},
+  {id:'stepped_shaft',name:'阶梯轴',     desc:'三段变径传动轴',             icon:'🎯'},
+  {id:'torus_shell',  name:'环形壳',     desc:'圆形截面空心圆环',           icon:'💍'},
+  {id:'annular_disk', name:'环形盘',     desc:'平面圆环 / 垫片',            icon:'🪙'},
+  {id:'turbine_blade',name:'涡轮叶片',   desc:'翼型截面叶片，CF铺层关键',   icon:'🌬️'},
+  {id:'rocket_fin',   name:'火箭尾翼',   desc:'梯形平板尾翼稳定面',         icon:'🛸'},
+].map(m => ({ ...m, url: `/models/${m.id}.stl` }));
+
 async function loadModelLibrary() {
   try {
-    const res = await fetch('http://localhost:8765/api/models');
+    const res = await fetch('http://localhost:8765/api/models',
+                            { signal: AbortSignal.timeout(3000) });
     const data = await res.json();
-    if (data.models) mlibModels = data.models;
-  } catch (e) { /* server not ready */ }
+    if (data.models && data.models.length > 0) { mlibModels = data.models; return; }
+  } catch (e) { /* server not ready, use fallback */ }
+  mlibModels = MLIB_FALLBACK;
 }
 
 const MLIB_PER_PAGE = 16;
@@ -2195,23 +2343,26 @@ async function loadSelectedBuiltinModel() {
   showToast('加载 ' + model.name + '...');
 
   try {
+    // Fetch STL for 3D viewport preview (doesn't need to be watertight)
     const stlBuf = await (await fetch('http://localhost:8765' + model.url)).arrayBuffer();
-    const file = new File([stlBuf], model.id + '.stl', { type: 'application/octet-stream' });
-    const fd = new FormData();
-    fd.append('file', file); fd.append('mesh_size', '2.5');
-    const data = await (await fetch('http://localhost:8765/api/upload_stl', { method: 'POST', body: fd, signal: AbortSignal.timeout(30000) })).json();
+    // Generate 3D mesh directly from OCC primitives (bypasses STL round-trip)
+    const data = await (await fetch(
+      'http://localhost:8765/api/load_builtin?model_key=' + model.id + '&mesh_size=3.0',
+      { signal: AbortSignal.timeout(120000) }
+    )).json();
     if (data.status === 'ok') {
       nameEl.textContent = '✓ ' + model.name;
       nameEl.style.display = 'block';
       drop.style.borderColor = 'var(--green)';
       setServerOnline(true);
+      appState.serverMeshReady = true;
       showToast(model.name + ' 加载成功');
       updateViewportForStl(model.name, stlBuf);
       document.getElementById('obj-list-empty').style.display = 'none';
       document.getElementById('obj-list-cylinder').style.display = 'flex';
       document.getElementById('obj-list-cylinder').querySelector('span:last-child').textContent = model.name;
     } else {
-      showToast('加载失败: ' + (data.error || '未知错误'));
+      showToast('加载失败: ' + (data.error || '未知错误').substring(0, 80));
       drop.style.borderColor = 'var(--red)';
     }
   } catch(e) {
@@ -2260,6 +2411,7 @@ async function uploadStlFile(file) {
       nameEl.style.display = 'block';
       drop.style.borderColor = 'var(--green)';
       setServerOnline(true);
+      appState.serverMeshReady = true;
       showToast('STL 导入成功');
       updateViewportForStl(file.name, stlBuf);
       document.getElementById('obj-list-empty').style.display = 'none';
@@ -2278,45 +2430,369 @@ async function uploadStlFile(file) {
 function updateViewportForStl(name, stlBuffer) {
   if (cylinderMesh) { scene.remove(cylinderMesh); cylinderMesh = null; }
   if (helixGroup) { scene.remove(helixGroup); helixGroup = null; }
+  clearSupportPreview();
 
   if (!stlBuffer) return;
 
   const { positions, normals } = parseSTL(stlBuffer);
+  stlPositionsGlobal = positions;
+  modelOrient = { rx: 0, ry: 0, rz: 0 };
+  _resetOrientInputs();
+
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
   geo.setAttribute('normal', new THREE.BufferAttribute(normals, 3));
-
-  // Center model at Y=0 base
+  // Center geometry at local origin so rotations happen around model center.
+  // geo.center() modifies the Float32Array in-place, so stlPositionsGlobal stays in sync.
   geo.computeBoundingBox();
-  const box = geo.boundingBox;
-  const cx = (box.max.x + box.min.x) / 2;
-  const cy = (box.max.y + box.min.y) / 2;
-  const cz = (box.max.z + box.min.z) / 2;
-  const offsetY = -box.min.y;
+  geo.center();
 
-  const mat = new THREE.MeshPhongMaterial({
-    color: 0x3a7bd5, emissive: 0x0a1a3a,
-    specular: 0x88aaff, shininess: 50,
-    transparent: true, opacity: 0.82,
-    side: THREE.DoubleSide
+  const mat = new THREE.MeshStandardMaterial({
+    color: 0x2e80d8,
+    roughness: 0.35,
+    metalness: 0.15,
+    side: THREE.FrontSide,
   });
   cylinderMesh = new THREE.Mesh(geo, mat);
-  cylinderMesh.position.set(-cx, offsetY - cy, -cz);
+  cylinderMesh.castShadow = true;
+  cylinderMesh.receiveShadow = true;
   scene.add(cylinderMesh);
 
-  const wf = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({
-    color: 0x4466cc, wireframe: true, transparent: true, opacity: 0.12
-  }));
-  cylinderMesh.add(wf);
+  // Clean edge lines instead of semi-transparent wireframe
+  const edges = new THREE.EdgesGeometry(geo, 18);
+  const edgeMat = new THREE.LineBasicMaterial({ color: 0x6aabff, transparent: true, opacity: 0.22 });
+  cylinderMesh.add(new THREE.LineSegments(edges, edgeMat));
 
-  // Fit camera to model
-  const size = new THREE.Vector3();
-  box.getSize(size);
+  // Snap model bottom to Y=0 (no rotation yet)
+  _snapToGround();
+
+  // Fit camera
+  const worldBox = new THREE.Box3().setFromObject(cylinderMesh);
+  const size = new THREE.Vector3(); worldBox.getSize(size);
   const maxDim = Math.max(size.x, size.y, size.z);
   if (camera) {
     camera.position.set(maxDim * 1.2, maxDim * 0.8, maxDim * 1.8);
     camera.lookAt(0, size.y / 2, 0);
   }
+}
+
+function _snapToGround() {
+  if (!cylinderMesh) return;
+  cylinderMesh.position.set(0, 0, 0);
+  cylinderMesh.updateMatrixWorld(true);
+  const wb = new THREE.Box3().setFromObject(cylinderMesh);
+  cylinderMesh.position.set(
+    -(wb.max.x + wb.min.x) / 2,
+    -wb.min.y,
+    -(wb.max.z + wb.min.z) / 2
+  );
+}
+
+function _resetOrientInputs() {
+  ['rx','ry','rz'].forEach(ax => {
+    const s = document.getElementById('orient-' + ax);
+    const v = document.getElementById('orient-' + ax + '-val');
+    if (s) s.value = 0;
+    if (v) v.value = 0;
+  });
+}
+
+function syncOrientSlider(axis, val) {
+  const v = Math.round(parseFloat(val));
+  const inp = document.getElementById('orient-r' + axis + '-val');
+  if (inp) inp.value = v;
+  modelOrient['r' + axis] = v;
+  applyModelRotation();
+}
+
+function syncOrientInput(axis, val) {
+  const v = Math.round(parseFloat(val)) || 0;
+  const sl = document.getElementById('orient-r' + axis);
+  if (sl) sl.value = v;
+  modelOrient['r' + axis] = v;
+  applyModelRotation();
+}
+
+function applyModelRotation() {
+  if (!cylinderMesh) return;
+  clearSupportPreview();
+  cylinderMesh.rotation.set(
+    modelOrient.rx * Math.PI / 180,
+    modelOrient.ry * Math.PI / 180,
+    modelOrient.rz * Math.PI / 180
+  );
+  _snapToGround();
+}
+
+function resetOrientation() {
+  modelOrient = { rx: 0, ry: 0, rz: 0 };
+  _resetOrientInputs();
+  applyModelRotation();
+}
+
+// ── 悬垂面评分（用于多方向比较，采样每4个三角面）─────────────────────
+function _countOverhangs(rotMat, cosT) {
+  const pos = stlPositionsGlobal;
+  let cnt = 0;
+  for (let i = 0; i < pos.length; i += 36) {  // step=36 => sample 1/4 tris
+    const v0 = new THREE.Vector3(pos[i],pos[i+1],pos[i+2]).applyMatrix4(rotMat);
+    const v1 = new THREE.Vector3(pos[i+3],pos[i+4],pos[i+5]).applyMatrix4(rotMat);
+    const v2 = new THREE.Vector3(pos[i+6],pos[i+7],pos[i+8]).applyMatrix4(rotMat);
+    const n = v1.clone().sub(v0).cross(v2.clone().sub(v0)).normalize();
+    if (n.y < cosT) cnt++;
+  }
+  return cnt;
+}
+
+// ── 自动最优方向：在 rx/rz 各 8 步 (0°…315°, 每步45°) 中寻找悬垂最少的摆放 ──
+function autoOrient() {
+  if (!stlPositionsGlobal) { showToast('请先加载模型'); return; }
+  const btn = document.getElementById('auto-orient-btn');
+  if (btn) { btn.textContent = '计算中…'; btn.disabled = true; }
+
+  const cosT = -Math.cos(45 * Math.PI / 180);
+  const steps = [0, 45, 90, 135, 180, -135, -90, -45];
+
+  // Count overhangs at initial orientation
+  const initM = new THREE.Matrix4().identity();
+  const initCnt = _countOverhangs(initM, cosT);
+
+  let best = { rx: 0, ry: 0, rz: 0, label: '原始方向', cnt: initCnt };
+
+  // Test rx × rz grid (64 orientations)
+  for (const rx of steps) {
+    for (const rz of steps) {
+      const m = new THREE.Matrix4().makeRotationFromEuler(
+        new THREE.Euler(rx * Math.PI/180, 0, rz * Math.PI/180)
+      );
+      const cnt = _countOverhangs(m, cosT);
+      if (cnt < best.cnt) {
+        // Build a readable label
+        const lx = rx !== 0 ? `X${rx>0?'+':''}${rx}°` : '';
+        const lz = rz !== 0 ? `Z${rz>0?'+':''}${rz}°` : '';
+        best = { rx, ry: 0, rz, label: (lx||'') + (lz ? ' '+lz : '') || '原始方向', cnt };
+      }
+    }
+  }
+
+  // Refine around best: try ±15° around best.rx and best.rz
+  for (const drx of [-15, -10, -5, 5, 10, 15]) {
+    for (const drz of [-15, -10, -5, 5, 10, 15]) {
+      const rx = best.rx + drx, rz = best.rz + drz;
+      const m = new THREE.Matrix4().makeRotationFromEuler(
+        new THREE.Euler(rx * Math.PI/180, 0, rz * Math.PI/180)
+      );
+      const cnt = _countOverhangs(m, cosT);
+      if (cnt < best.cnt) {
+        best = { rx, ry: 0, rz, label: `X${rx>0?'+':''}${rx}° Z${rz>0?'+':''}${rz}°`, cnt };
+      }
+    }
+  }
+
+  modelOrient = { rx: best.rx, ry: best.ry, rz: best.rz };
+  ['rx','ry','rz'].forEach(ax => {
+    const s = document.getElementById('orient-r' + ax);
+    const v = document.getElementById('orient-r' + ax + '-val');
+    if (s) s.value = modelOrient[ax];
+    if (v) v.value = modelOrient[ax];
+  });
+  applyModelRotation();
+
+  const reduction = initCnt > 0 ? Math.round((1 - best.cnt / initCnt) * 100) : 0;
+  const scoreEl = document.getElementById('orient-score');
+  if (scoreEl) {
+    scoreEl.textContent = `${best.label} · 悬垂面 ${best.cnt} 个 (减少 ${reduction}%)`;
+    scoreEl.style.display = 'block';
+  }
+  if (btn) { btn.textContent = '自动最优'; btn.disabled = false; }
+  showToast('最优方向: ' + best.label + ' · 减少悬垂 ' + reduction + '%');
+}
+
+// ── 清除支撑预览 ──────────────────────────────────────────────────────────
+function clearSupportPreview() {
+  if (supportGroup) { scene.remove(supportGroup); supportGroup = null; }
+  const el = document.getElementById('support-stats');
+  if (el) el.style.display = 'none';
+}
+
+// ── 悬垂接触点采样 ────────────────────────────────────────────────────────
+function _collectOverhangPts(overhangDeg, spacing) {
+  if (!stlPositionsGlobal || !cylinderMesh) return [];
+  cylinderMesh.updateMatrixWorld(true);
+  const cosT = -Math.cos(overhangDeg * Math.PI / 180);
+  const pos = stlPositionsGlobal;
+  const wm = cylinderMesh.matrixWorld;
+  const seen = new Set();
+  const pts = [];
+  for (let i = 0; i < pos.length; i += 9) {
+    const v0 = new THREE.Vector3(pos[i],pos[i+1],pos[i+2]).applyMatrix4(wm);
+    const v1 = new THREE.Vector3(pos[i+3],pos[i+4],pos[i+5]).applyMatrix4(wm);
+    const v2 = new THREE.Vector3(pos[i+6],pos[i+7],pos[i+8]).applyMatrix4(wm);
+    const n = v1.clone().sub(v0).cross(v2.clone().sub(v0)).normalize();
+    if (n.y >= cosT) continue;
+    const cx = (v0.x+v1.x+v2.x)/3, cy = (v0.y+v1.y+v2.y)/3, cz = (v0.z+v1.z+v2.z)/3;
+    if (cy < 0.1) continue;
+    const key = `${Math.round(cx/spacing)},${Math.round(cz/spacing)}`;
+    if (!seen.has(key)) { seen.add(key); pts.push({ x: cx, y: cy, z: cz }); }
+  }
+  return pts;
+}
+
+// ── Union-Find 聚类（按XZ距离）────────────────────────────────────────────
+function _clusterPts(pts, eps) {
+  const n = pts.length;
+  const par = Array.from({length: n}, (_, i) => i);
+  const find = i => par[i] === i ? i : (par[i] = find(par[i]));
+  for (let i = 0; i < n; i++)
+    for (let j = i+1; j < n; j++)
+      if (Math.hypot(pts[i].x-pts[j].x, pts[i].z-pts[j].z) < eps)
+        par[find(i)] = find(j);
+  const g = new Map();
+  for (let i = 0; i < n; i++) {
+    const r = find(i); if (!g.has(r)) g.set(r, []); g.get(r).push(pts[i]);
+  }
+  return [...g.values()];
+}
+
+// ── K-means k=2 （XZ平面）────────────────────────────────────────────────
+function _kmeansTwo(pts) {
+  if (pts.length <= 1) return [pts, []];
+  // Init: two furthest points
+  let c1 = pts[0], c2 = pts[0], maxD = 0;
+  for (let i = 0; i < pts.length; i++)
+    for (let j = i+1; j < pts.length; j++) {
+      const d = Math.hypot(pts[i].x-pts[j].x, pts[i].z-pts[j].z);
+      if (d > maxD) { maxD = d; c1 = pts[i]; c2 = pts[j]; }
+    }
+  let g1, g2;
+  for (let iter = 0; iter < 6; iter++) {
+    g1 = []; g2 = [];
+    for (const p of pts) {
+      (Math.hypot(p.x-c1.x,p.z-c1.z) <= Math.hypot(p.x-c2.x,p.z-c2.z) ? g1 : g2).push(p);
+    }
+    if (!g1.length) { g1.push(g2.pop()); }
+    if (!g2.length) { g2.push(g1.pop()); }
+    c1 = { x: g1.reduce((s,p)=>s+p.x,0)/g1.length, z: g1.reduce((s,p)=>s+p.z,0)/g1.length };
+    c2 = { x: g2.reduce((s,p)=>s+p.x,0)/g2.length, z: g2.reduce((s,p)=>s+p.z,0)/g2.length };
+  }
+  return [g1, g2];
+}
+
+// ── 树状支撑递归构建 ──────────────────────────────────────────────────────
+function _treeRecurse(parent, pts, branches, radius, depth) {
+  if (!pts.length) return;
+  if (pts.length <= 2 || depth >= 5) {
+    for (const p of pts)
+      branches.push({ from: parent, to: p, r: Math.max(0.35, radius) });
+    return;
+  }
+  const [g1, g2] = _kmeansTwo(pts);
+  const minY1 = Math.min(...g1.map(p=>p.y));
+  const minY2 = Math.min(...g2.map(p=>p.y));
+  const branchY = parent.y + (Math.min(minY1, minY2) - parent.y) * 0.42;
+  const b1 = { x: g1.reduce((s,p)=>s+p.x,0)/g1.length, y: branchY, z: g1.reduce((s,p)=>s+p.z,0)/g1.length };
+  const b2 = { x: g2.reduce((s,p)=>s+p.x,0)/g2.length, y: branchY, z: g2.reduce((s,p)=>s+p.z,0)/g2.length };
+  const r2 = radius * 0.72;
+  branches.push({ from: parent, to: b1, r: r2 });
+  branches.push({ from: parent, to: b2, r: r2 });
+  _treeRecurse(b1, g1, branches, r2 * 0.78, depth + 1);
+  _treeRecurse(b2, g2, branches, r2 * 0.78, depth + 1);
+}
+
+// ── Three.js 圆柱体（连接两点）────────────────────────────────────────────
+function _makeCylBranch(from, to, r, mat) {
+  const dir = new THREE.Vector3(to.x-from.x, to.y-from.y, to.z-from.z);
+  const len = dir.length();
+  if (len < 0.1) return null;
+  const segs = Math.max(5, Math.ceil(r * 4));
+  const mesh = new THREE.Mesh(new THREE.CylinderGeometry(r*0.55, r, len, segs, 1), mat);
+  mesh.position.set((from.x+to.x)/2, (from.y+to.y)/2, (from.z+to.z)/2);
+  mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0), dir.normalize());
+  return mesh;
+}
+
+// ── 生成支撑预览（入口，路由到柱状 or 树状）─────────────────────────────
+function generateSupportPreview() {
+  if (!stlPositionsGlobal || !cylinderMesh) { showToast('请先加载模型'); return; }
+  const type = document.getElementById('rp-support').value;
+  if (type === 'none') { clearSupportPreview(); showToast('支撑类型为"无"'); return; }
+  clearSupportPreview();
+  const deg = parseFloat(document.getElementById('rp-overhang-angle').value) || 45;
+  if (type === 'tree') { _generateTreeSupport(deg); } else { _generateColumnSupport(deg); }
+}
+
+// ── 柱状支撑 ──────────────────────────────────────────────────────────────
+function _generateColumnSupport(overhangDeg) {
+  const pts = _collectOverhangPts(overhangDeg, 4.0);
+  if (!pts.length) { showToast('当前方向无需支撑 ✓'); return; }
+  supportGroup = new THREE.Group();
+  const lineMat = new THREE.LineBasicMaterial({ color: 0xff7700, transparent: true, opacity: 0.85 });
+  const capMat = new THREE.MeshStandardMaterial({ color: 0xff9933, roughness: 0.5, transparent: true, opacity: 0.75 });
+  for (const p of pts) {
+    const ln = [new THREE.Vector3(p.x, 0, p.z), new THREE.Vector3(p.x, p.y-0.4, p.z)];
+    supportGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(ln), lineMat));
+    const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.8, 0.8, 0.6, 6), capMat);
+    cap.position.set(p.x, p.y - 0.2, p.z);
+    supportGroup.add(cap);
+  }
+  scene.add(supportGroup);
+  const el = document.getElementById('support-stats');
+  el.textContent = `${pts.length} 根支撑柱 · 约 ${(pts.length*0.06).toFixed(1)}g`;
+  el.style.display = 'block';
+  showToast('柱状支撑: ' + pts.length + ' 根');
+}
+
+// ── 树状支撑 ──────────────────────────────────────────────────────────────
+function _generateTreeSupport(overhangDeg) {
+  const contactPts = _collectOverhangPts(overhangDeg, 6.0);
+  if (!contactPts.length) { showToast('当前方向无需支撑 ✓'); return; }
+
+  const clusters = _clusterPts(contactPts, 28.0);
+  supportGroup = new THREE.Group();
+
+  const trunkMat = new THREE.MeshStandardMaterial({
+    color: 0xff8800, roughness: 0.55, metalness: 0.05,
+    transparent: true, opacity: 0.88
+  });
+  const contactMat = new THREE.MeshStandardMaterial({
+    color: 0xffcc44, roughness: 0.4, transparent: true, opacity: 0.9
+  });
+
+  let totalBranches = 0;
+
+  for (const cluster of clusters) {
+    const cx = cluster.reduce((s,p)=>s+p.x,0)/cluster.length;
+    const cz = cluster.reduce((s,p)=>s+p.z,0)/cluster.length;
+    const root = { x: cx, y: 0, z: cz };
+    const branches = [];
+    _treeRecurse(root, cluster, branches, 2.2, 0);
+    totalBranches += branches.length;
+
+    // Render trunk + branches
+    for (const b of branches) {
+      const m = _makeCylBranch(b.from, b.to, b.r, trunkMat);
+      if (m) supportGroup.add(m);
+    }
+    // Trunk base sphere
+    const baseGeo = new THREE.SphereGeometry(1.8, 8, 6);
+    const base = new THREE.Mesh(baseGeo, trunkMat);
+    base.position.set(cx, 0, cz);
+    supportGroup.add(base);
+    // Contact point spheres
+    for (const p of cluster) {
+      const sp = new THREE.Mesh(new THREE.SphereGeometry(0.9, 7, 5), contactMat);
+      sp.position.set(p.x, p.y, p.z);
+      supportGroup.add(sp);
+    }
+  }
+
+  scene.add(supportGroup);
+
+  const matEst = (totalBranches * 0.14).toFixed(1);
+  const el = document.getElementById('support-stats');
+  el.textContent = `${clusters.length} 棵树 · ${totalBranches} 段分支 · 约 ${matEst}g`;
+  el.style.display = 'block';
+  showToast(`树状支撑: ${clusters.length} 棵, ${totalBranches} 段`);
 }
 
 // ============================
@@ -2428,14 +2904,25 @@ async function generateGcode() {
   const infill_density = (parseFloat(document.getElementById('rp-infill-val').value) || 25) / 100;
   const speedPct = parseInt(document.getElementById('rp-speed-slider').value);
   const feedRate = Math.round((20 + speedPct / 100 * 60) * 60);
-  const geomRadius = parseFloat(document.getElementById('rp-r-outer').value) || 25;
-  const geomLength = parseFloat(document.getElementById('rp-height').value) || 50;
+  const geomRadius = appState.geomRadius || 25;
+  const geomLength = appState.geomLength || 50;
+  const geomRInner = appState.geomRInner || 0;
 
   try {
     setServerOnline(true);
 
-    // Step 1: mesh — always STL mode
-    setProgress(25, '使用已上传 STL');
+    // Step 1: ensure server has a mesh
+    if (!appState.serverMeshReady) {
+      setProgress(15, '生成圆柱网格...');
+      const meshResult = await callApi('/api/mesh', {
+        model: 'cylinder',
+        r_outer: geomRadius, r_inner: geomRInner,
+        height: geomLength, mesh_size: 3.0,
+      });
+      if (meshResult.error) throw new Error('网格: ' + meshResult.error);
+      appState.serverMeshReady = true;
+    }
+    setProgress(25, '网格就绪');
 
     // Step 2: FEA (only for stress strategy)
     if (strategy === 'stress') {
@@ -2449,7 +2936,6 @@ async function generateGcode() {
     setProgress(60, strategy === 'fill' ? '计算整体填充路径...' :
                     strategy === 'combined' ? '计算填充+CF缠绕路径...' :
                     '计算XY+A缠绕路径...');
-    const geomRInner = parseFloat(document.getElementById('rp-r-inner').value) || 0;
     const pathResult = await callApi('/api/xyza_paths', {
       strategy, angle, n_layers, a_offset_z: 50.0,
       radius: geomRadius, length: geomLength,
@@ -2695,6 +3181,196 @@ window.addEventListener('DOMContentLoaded', () => {
 });
 
 window.addEventListener('resize', onResize);
+</script>
+
+<!-- ── Backend Log Panel JS ──────────────────────────────────────────── -->
+<script>
+(function() {
+  let logOpen = false;
+  let logPollTimer = null;
+  let logSeenCount = 0;
+  const LEVEL_COLOR = { INFO:'#8b8fa8', DEBUG:'#555', WARNING:'#e5a44b', ERROR:'#f87171' };
+
+  // ── Drag (mousemove — OrbitControls uses pointer events, mouse events are free) ──
+  function initDrag() {
+    const panel  = document.getElementById('log-panel');
+    const handle = document.getElementById('log-drag-handle');
+    let isDragging = false;
+    let ox = 0, oy = 0;
+
+    handle.addEventListener('mousedown', e => {
+      if (e.target.tagName === 'BUTTON') return;
+      e.preventDefault();
+      e.stopPropagation();
+      const r = panel.getBoundingClientRect();
+      ox = e.clientX - r.left;
+      oy = e.clientY - r.top;
+      isDragging = true;
+      handle.style.cursor = 'grabbing';
+    });
+
+    document.addEventListener('mousemove', e => {
+      if (!isDragging) return;
+      let nx = e.clientX - ox;
+      let ny = e.clientY - oy;
+      nx = Math.max(0, Math.min(nx, window.innerWidth  - panel.offsetWidth));
+      ny = Math.max(0, Math.min(ny, window.innerHeight - panel.offsetHeight));
+      panel.style.left = nx + 'px';
+      panel.style.top  = ny + 'px';
+    });
+
+    document.addEventListener('mouseup', () => {
+      if (!isDragging) return;
+      isDragging = false;
+      handle.style.cursor = 'grab';
+    });
+  }
+
+  // ── Toggle ────────────────────────────────────────────────────────────
+  window.toggleLogPanel = function() {
+    const panel = document.getElementById('log-panel');
+    logOpen = !logOpen;
+    panel.style.display = logOpen ? 'flex' : 'none';
+    if (logOpen) startLogPoll();
+    else         stopLogPoll();
+  };
+
+  // ── Clear with tactile feedback ───────────────────────────────────────
+  window.clearLogPanel = function(btn) {
+    const lines = document.getElementById('log-lines');
+    const count = lines.querySelectorAll('div').length;
+    lines.innerHTML = '';
+    // logSeenCount intentionally NOT reset — keeps server offset so old logs don't refill
+
+    btn.style.transition = 'none';
+    btn.style.transform  = 'scale(0.88)';
+    btn.style.background = '#1a1220';
+    btn.style.color      = '#f87171';
+    btn.style.borderColor= '#f87171';
+    setTimeout(() => {
+      btn.style.transition = 'transform 0.15s, background 0.3s, color 0.3s, border-color 0.3s';
+      btn.style.transform  = 'scale(1)';
+      btn.style.background = '';
+      btn.style.color      = '#666';
+      btn.style.borderColor= '#333';
+    }, 120);
+
+    showLogToast('已清空 ' + count + ' 条');
+  };
+
+  // ── Copy with tactile feedback ────────────────────────────────────────
+  window.copyAllLogs = function(btn) {
+    const lines = document.getElementById('log-lines');
+    const text  = Array.from(lines.querySelectorAll('div')).map(d => d.textContent).join('\n');
+    if (!text.trim()) { flashBtn(btn, '（空）', '#555', 800); return; }
+
+    // Pressed feel: shrink + darken instantly
+    btn.style.transition = 'none';
+    btn.style.transform  = 'scale(0.88)';
+    btn.style.background = '#1a2412';
+    btn.style.color      = '#4ade80';
+    btn.style.borderColor= '#4ade80';
+
+    navigator.clipboard.writeText(text).then(() => {
+      // Bounce back
+      setTimeout(() => {
+        btn.style.transition = 'transform 0.15s ease, background 0.15s ease';
+        btn.style.transform  = 'scale(1)';
+      }, 80);
+
+      btn.textContent = '✓ 已复制';
+
+      // Show a small toast inside the panel
+      showLogToast('已复制 ' + lines.querySelectorAll('div').length + ' 行');
+
+      setTimeout(() => {
+        btn.textContent   = '复制';
+        btn.style.background  = '';
+        btn.style.color       = '';
+        btn.style.borderColor = '';
+        btn.style.transition  = '';
+      }, 1800);
+    }).catch(() => {
+      flashBtn(btn, '失败', '#f87171', 1200);
+    });
+  };
+
+  function flashBtn(btn, label, color, dur) {
+    const orig = btn.textContent;
+    btn.textContent = label;
+    btn.style.color = color;
+    setTimeout(() => { btn.textContent = orig; btn.style.color = ''; }, dur);
+  }
+
+  function showLogToast(msg) {
+    const panel = document.getElementById('log-panel');
+    let t = panel.querySelector('.log-toast');
+    if (!t) {
+      t = document.createElement('div');
+      t.className = 'log-toast';
+      t.style.cssText = `
+        position:absolute; bottom:8px; left:50%; transform:translateX(-50%);
+        background:#4ade80; color:#0a1a0a; border-radius:5px;
+        padding:3px 14px; font-size:11px; font-weight:600; pointer-events:none;
+        opacity:0; transition:opacity 0.15s; white-space:nowrap; z-index:1;`;
+      panel.appendChild(t);
+    }
+    t.textContent = msg;
+    t.style.opacity = '1';
+    clearTimeout(t._timer);
+    t._timer = setTimeout(() => { t.style.opacity = '0'; }, 1500);
+  }
+
+  // ── Poll ──────────────────────────────────────────────────────────────
+  function startLogPoll() {
+    if (logPollTimer) return;
+    logPollTimer = setInterval(fetchLogs, 800);
+    fetchLogs();
+  }
+
+  function stopLogPoll() {
+    clearInterval(logPollTimer);
+    logPollTimer = null;
+  }
+
+  async function fetchLogs() {
+    try {
+      const data = await (await fetch('http://localhost:8765/api/logs',
+                                      { signal: AbortSignal.timeout(2000) })).json();
+      const entries    = data.logs || [];
+      const newEntries = entries.slice(logSeenCount);
+      if (!newEntries.length) return;
+      logSeenCount = entries.length;
+
+      const container = document.getElementById('log-lines');
+      const atBottom  = container.scrollHeight - container.scrollTop - container.clientHeight < 30;
+
+      newEntries.forEach(e => {
+        const line  = document.createElement('div');
+        const color = LEVEL_COLOR[e.lvl] || '#8b8fa8';
+        const badge = e.lvl === 'ERROR'   ? `<span style="color:#f87171;font-weight:700">[ERR] </span>` :
+                      e.lvl === 'WARNING' ? `<span style="color:#e5a44b">[WRN] </span>` : '';
+        line.innerHTML  = `<span style="color:#3a3f55">${escHtml(e.t)}</span> ${badge}<span style="color:${color}">${escHtml(e.msg)}</span>`;
+        line.style.cssText = 'padding:1px 0;white-space:pre-wrap;word-break:break-all;line-height:1.6;';
+        if (e.lvl === 'ERROR') line.style.background = 'rgba(248,113,113,.06)';
+        container.appendChild(line);
+      });
+
+      if (atBottom) container.scrollTop = container.scrollHeight;
+      document.getElementById('log-status').textContent = logSeenCount + ' 条';
+    } catch {
+      document.getElementById('log-status').textContent = '未连接';
+    }
+  }
+
+  function escHtml(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+
+  // Init after DOM ready
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initDrag);
+  else initDrag();
+})();
 </script>
 </body>
 </html>

@@ -17,6 +17,9 @@ import json
 import uuid
 import tempfile
 import traceback
+import logging
+import time
+from collections import deque
 
 # Ignore SIGPIPE to prevent server crash on client disconnect
 signal.signal(signal.SIGPIPE, signal.SIG_IGN)
@@ -26,6 +29,31 @@ from http.server import HTTPServer, SimpleHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
 import threading
 import io
+
+# ── In-memory log ring buffer ──────────────────────────────────────────────
+_log_buffer: deque = deque(maxlen=500)
+_log_lock = threading.Lock()
+
+class _BufHandler(logging.Handler):
+    def emit(self, record):
+        msg = self.format(record)
+        with _log_lock:
+            _log_buffer.append({"t": time.strftime("%H:%M:%S") + f".{record.msecs:03.0f}",
+                                 "lvl": record.levelname, "msg": record.getMessage()})
+        try:
+            print(msg, flush=True)
+        except OSError:
+            pass
+
+_logger = logging.getLogger("cfpp")
+_logger.setLevel(logging.DEBUG)
+_h = _BufHandler()
+_h.setFormatter(logging.Formatter("%(asctime)s.%(msecs)03d [%(levelname)-5s] %(message)s",
+                                   datefmt="%H:%M:%S"))
+_logger.addHandler(_h)
+
+def log(msg: str, level: str = "INFO"):
+    getattr(_logger, level.lower(), _logger.info)(msg)
 
 # Project root
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
@@ -63,11 +91,13 @@ def api_mesh(params):
     model = params.get("model", "cylinder")
     mesh_size = float(params.get("mesh_size", 2.5))
     mesh_path = os.path.join(tempfile.gettempdir(), f"cfpp_{uuid.uuid4().hex[:8]}.msh")
+    log(f"[mesh] model={model} mesh_size={mesh_size}")
 
     if model == "cylinder":
         r_outer = float(params.get("r_outer", 25))
         r_inner = float(params.get("r_inner", 20))
         height = float(params.get("height", 80))
+        log(f"[mesh] cylinder r_outer={r_outer} r_inner={r_inner} h={height}")
         code = (f'import sys; sys.path.insert(0,"{PROJECT_ROOT}")\n'
                 f'from cfpp.mesh.generator import create_cylinder_mesh\n'
                 f'create_cylinder_mesh({r_outer},{r_inner},{height},{mesh_size},"{mesh_path}")')
@@ -76,15 +106,19 @@ def api_mesh(params):
         r_top = float(params.get("r_top", 15))
         height = float(params.get("height", 60))
         wall = float(params.get("wall", 5))
+        log(f"[mesh] cone r_bottom={r_bottom} r_top={r_top} h={height}")
         code = (f'import sys; sys.path.insert(0,"{PROJECT_ROOT}")\n'
                 f'from cfpp.mesh.generator import create_cone_mesh\n'
                 f'create_cone_mesh({r_bottom},{r_top},{height},{wall},{mesh_size},"{mesh_path}")')
     else:
         return {"error": f"Unknown model: {model}"}
 
+    t0 = time.time()
     result = subprocess.run([sys.executable, "-c", code],
                            capture_output=True, text=True, timeout=60)
+    log(f"[mesh] subprocess done in {time.time()-t0:.2f}s rc={result.returncode}")
     if result.returncode != 0:
+        log(f"[mesh] ERROR: {result.stderr[-200:]}", "ERROR")
         return {"error": result.stderr[-300:]}
 
     state["mesh_path"] = mesh_path
@@ -282,9 +316,13 @@ def api_xyza_paths(params):
     n_walls = int(params.get("n_walls", 2))
     infill_density = float(params.get("infill_density", 0.25))
 
+    log(f"[paths] radius={radius} length={length} angle={angle} n_layers={n_layers} "
+        f"layer_h={layer_height} n_walls={n_walls} infill={infill_density:.2f}")
     planner = XYAPathPlanner(a_offset_y=0.0, a_offset_z=a_offset_z)
 
     # Unified strategy: rectilinear base-material fill + CF surface winding
+    t0 = time.time()
+    log("[paths] combined_print_paths START")
     waypoints = planner.combined_print_paths(
         radius=radius, length=length,
         r_inner=r_inner,
@@ -292,6 +330,7 @@ def api_xyza_paths(params):
         layer_height=layer_height, extrusion_width=extrusion_width,
         n_walls=n_walls, infill_density=infill_density,
     )
+    log(f"[paths] combined_print_paths DONE  {len(waypoints)} waypoints  {time.time()-t0:.2f}s")
 
     state["xyza_waypoints"] = waypoints
 
@@ -307,10 +346,13 @@ def api_xyza_paths(params):
                 float(z_model * _math.sin(a)),
                 float(x_axis)]
 
+    t1 = time.time()
+    log(f"[paths] converting {len(waypoints)} waypoints to 3D...")
     pts_3d = [_wp_to_3d(wp) for wp in waypoints]
     a_vals = [wp[3] for wp in waypoints]
     a_min = float(min(a_vals)) if a_vals else 0.0
     a_max = float(max(a_vals)) if a_vals else 360.0
+    log(f"[paths] 3D conversion done  {time.time()-t1:.2f}s")
 
     os.makedirs(DATA_DIR, exist_ok=True)
 
@@ -327,6 +369,8 @@ def api_xyza_paths(params):
     # ── split paths + total length ──────────────────────────────────────
     # For fill/combined: split at x-position boundaries (each X slice is a layer)
     # For winding:       split at large position jumps (each fiber pass is a layer)
+    t2 = time.time()
+    log(f"[paths] splitting {len(pts_3d)} pts into layers (strategy={strategy})...")
     path_list = []
     total_len = 0.0
     layer_types = []   # "fill" | "fiber"
@@ -430,7 +474,11 @@ def api_xyza_paths(params):
                     total_len += _math.sqrt(
                         sum((current_path[j+1][k]-current_path[j][k])**2 for k in range(3)))
 
+    log(f"[paths] split done  {len(path_list)} segments  {time.time()-t2:.2f}s")
+
     # ── live_paths.json (legacy compat, subsampled) ──────────────────────
+    t3 = time.time()
+    log(f"[paths] writing live_paths.json...")
     path_list_sub = [p[::max(1, len(p)//60)] for p in path_list]
     with open(os.path.join(DATA_DIR, "live_paths.json"), "w") as f:
         json.dump({
@@ -533,6 +581,8 @@ def api_xyza_paths(params):
             layers_vis = [lp[::thin] for lp in layers_vis]
     layer_types = layer_types_vis
 
+    t4 = time.time()
+    log(f"[paths] writing live_layers.json  {len(layers_vis)} vis-segs...")
     with open(os.path.join(DATA_DIR, "live_layers.json"), "w") as f:
         json.dump({
             "n_layers": len(layers_vis),
@@ -540,6 +590,7 @@ def api_xyza_paths(params):
             "layer_types": layer_types,
             "layers": layers_vis,
         }, f)
+    log(f"[paths] live_layers.json written  {time.time()-t4:.2f}s")
 
     # live_gcode.json — positions + is_print for G-code replay animation
     sub_step = max(1, len(pts_3d) // 8000)
@@ -565,6 +616,8 @@ def api_xyza_paths(params):
 
     fill_vis_count  = sum(1 for t in layer_types if t == "fill")
     fiber_vis_count = sum(1 for t in layer_types if t == "fiber")
+    log(f"[paths] ALL DONE  total={time.time()-t0:.2f}s  vis={len(layers_vis)} "
+        f"fill={fill_vis_count} fiber={fiber_vis_count}")
 
     return {
         "status": "ok",
@@ -603,37 +656,61 @@ def api_gcode(params):
     if state["xyza_waypoints"] is None:
         return {"error": "No waypoints. Run /api/xyza_paths first."}
 
-    from cfpp.gcode.xyza_backend import PrinterConfig, waypoints_to_gcode
-
-    feed_rate = float(params.get("feed_rate", 600))
-    a_offset_z = float(params.get("a_offset_z", 50.0))
+    feed_rate    = float(params.get("feed_rate", 600))
+    a_offset_z   = float(params.get("a_offset_z", 50.0))
     layer_height = float(params.get("layer_height", 0.2))
-    extrusion_width = float(params.get("extrusion_width", 0.4))
-
-    config = PrinterConfig(
-        a_offset_y=0.0,
-        a_offset_z=a_offset_z,
-        print_speed=feed_rate,
-        travel_speed=feed_rate * 5,
-        extrusion_height=layer_height,
-        extrusion_width=extrusion_width,
-    )
+    ext_width    = float(params.get("extrusion_width", 0.4))
+    travel_rate  = feed_rate * 5
+    filament_r   = 0.875   # 1.75mm filament, radius = 0.875mm
+    import math as _gm
+    e_per_mm     = ext_width * layer_height / (_gm.pi * filament_r ** 2)
 
     waypoints = state["xyza_waypoints"]
-    gcode_str = waypoints_to_gcode(waypoints, config)
+    log(f"[gcode] fast path  n={len(waypoints)}  feed={feed_rate}  layer_h={layer_height}")
+    tg = time.time()
+
+    # Fast native G-code generation — bypasses FullControl (18× faster)
+    buf = [
+        "; CF-Path-Planner XYZA G-code",
+        f"; waypoints={len(waypoints)}  feed={feed_rate}mm/min",
+        "G28 ; home",
+        "G92 E0",
+        f"M104 S240 ; nozzle",
+        f"M140 S80  ; bed",
+        "M109 S240",
+        "M190 S80",
+        f"G1 F{travel_rate:.0f}",
+    ]
+    E = 0.0
+    prev_x = prev_y = prev_z = None
+    for wp in waypoints:
+        x, y, z, a = wp
+        if prev_x is None:
+            buf.append(f"G1 X{x:.3f} Y{y:.3f} Z{z:.3f} A{a:.2f} E0.0000 F{feed_rate:.0f}")
+        else:
+            dx = x - prev_x; dy = y - prev_y; dz = z - prev_z
+            dist = _gm.sqrt(dx*dx + dy*dy + dz*dz)
+            E += dist * e_per_mm
+            buf.append(f"G1 X{x:.3f} Y{y:.3f} Z{z:.3f} A{a:.2f} E{E:.4f}")
+        prev_x, prev_y, prev_z = x, y, z
+    buf.append("M104 S0 ; cool down")
+    buf.append("M140 S0")
+    gcode_str = "\n".join(buf)
+    log(f"[gcode] generation done  {len(gcode_str)} chars  {time.time()-tg:.2f}s")
 
     os.makedirs(DATA_DIR, exist_ok=True)
     gcode_path = os.path.join(DATA_DIR, "output.gcode")
+    tw = time.time()
     with open(gcode_path, "w") as f:
         f.write(gcode_str)
+    log(f"[gcode] write done  {time.time()-tw:.2f}s  total={time.time()-tg:.2f}s")
 
     state["gcode_path"] = gcode_path
 
-    a_vals = [wp[3] for wp in waypoints]
-    fiber_mm = float(sum(
-        np.sqrt(sum((waypoints[i+1][j] - waypoints[i][j])**2 for j in range(3)))
-        for i in range(len(waypoints) - 1)
-    ))
+    wps_arr = np.array(waypoints)
+    a_vals = wps_arr[:, 3]
+    diffs = np.diff(wps_arr[:, :3], axis=0)
+    fiber_mm = float(np.sum(np.linalg.norm(diffs, axis=1)))
 
     return {
         "status": "ok",
@@ -642,8 +719,8 @@ def api_gcode(params):
         "n_waypoints": len(waypoints),
         "fiber_mm": round(fiber_mm, 1),
         "travel_mm": 0.0,
-        "a_min": round(min(a_vals), 1) if a_vals else 0.0,
-        "a_max": round(max(a_vals), 1) if a_vals else 0.0,
+        "a_min": round(float(a_vals.min()), 1) if len(a_vals) else 0.0,
+        "a_max": round(float(a_vals.max()), 1) if len(a_vals) else 0.0,
         "file": "/data/output.gcode",
     }
 
@@ -735,6 +812,42 @@ MODELS_META = {
     "turbine_blade":   {"name": "涡轮叶片",    "desc": "翼型截面叶片，CF铺层关键",    "icon": "🌬️"},
     "rocket_fin":      {"name": "火箭尾翼",    "desc": "梯形平板尾翼稳定面",          "icon": "🛸"},
 }
+
+
+def api_load_builtin(params):
+    """Generate 3D mesh directly from OCC primitives for a built-in model."""
+    import subprocess
+    model_key = params.get("model_key", "")
+    if not model_key or model_key not in MODELS_META:
+        return {"error": f"Unknown model_key: {model_key}"}
+
+    mesh_size = float(params.get("mesh_size", 3.0))
+    mesh_path = os.path.join(tempfile.gettempdir(), f"builtin_{model_key}.msh")
+
+    code = (f'import sys; sys.path.insert(0,"{PROJECT_ROOT}")\n'
+            f'from cfpp.mesh.generator import create_builtin_mesh\n'
+            f'create_builtin_mesh("{model_key}", {mesh_size}, "{mesh_path}")')
+    result = subprocess.run([sys.executable, "-c", code],
+                            capture_output=True, text=True, timeout=120)
+    if result.returncode != 0:
+        return {"error": result.stderr[-400:]}
+
+    state["mesh_path"] = mesh_path
+    state["surface"] = None
+    state["surf_stress"] = None
+    state["xyza_waypoints"] = None
+
+    return {
+        "status": "ok",
+        "mesh_path": mesh_path,
+        "info": result.stdout.strip(),
+    }
+
+
+def api_logs():
+    with _log_lock:
+        entries = list(_log_buffer)
+    return {"logs": entries, "n": len(entries)}
 
 
 def api_list_models():
@@ -894,11 +1007,18 @@ class CFPPHandler(SimpleHTTPRequestHandler):
             params = {}
         endpoint = path.replace("/api/", "").strip("/")
 
+        t_req = time.time()
+        if endpoint not in ("status", "logs"):
+            log(f"→ /{endpoint}  params={list(params.keys()) if params else []}")
         try:
             if endpoint == "status":
                 result = {"status": "ok", "version": "1.0"}
+            elif endpoint == "logs":
+                result = api_logs()
             elif endpoint == "models":
                 result = api_list_models()
+            elif endpoint == "load_builtin":
+                result = api_load_builtin(params)
             elif endpoint == "mesh":
                 result = api_mesh(params)
             elif endpoint == "fea":
@@ -912,7 +1032,12 @@ class CFPPHandler(SimpleHTTPRequestHandler):
             else:
                 result = {"error": f"Unknown endpoint: {endpoint}"}
         except Exception as e:
+            log(f"✗ /{endpoint} EXCEPTION: {e}", "ERROR")
+            log(traceback.format_exc()[-300:], "ERROR")
             result = {"error": str(e), "traceback": traceback.format_exc()[-500:]}
+        if endpoint not in ("status", "logs"):
+            log(f"← /{endpoint}  {time.time()-t_req:.2f}s  "
+                f"{'ok' if 'error' not in result else 'ERR:'+str(result.get('error',''))[:60]}")
 
         try:
             self._send_json(result)
