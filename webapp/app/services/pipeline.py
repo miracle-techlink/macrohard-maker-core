@@ -143,57 +143,91 @@ def run_plan(params: dict, job_state, progress_cb=None) -> dict:
     if progress_cb:
         progress_cb("plan_convert", 60, f"{len(waypoints)} 路径点，转换 3D...")
 
-    # 3D 坐标转换（x=旋转轴, z=半径方向）
-    a_off = a_offset_z
-    pts_3d = []
-    for x, y_m, z_m, a_deg in waypoints:
-        a_rad = math.radians(a_deg)
-        y3 = -z_m * math.sin(a_rad) + a_off
-        z3 =  z_m * math.cos(a_rad)
-        pts_3d.append((x, y3, z3, a_deg))
+    # 3D 坐标转换 — 与 server.py _wp_to_3d 完全一致
+    # waypoint: (x_axis, y_model, z_model=radius, a_deg)
+    # 3D output: [radius*cos(A), radius*sin(A), x_axis]
+    def _wp_to_3d(wp):
+        x_axis, _y_model, z_model, a_deg = wp
+        a = math.radians(a_deg)
+        return [float(z_model * math.cos(a)),
+                float(z_model * math.sin(a)),
+                float(x_axis)]
+
+    pts_3d = [_wp_to_3d(wp) for wp in waypoints]
 
     if progress_cb:
         progress_cb("plan_split", 70, "切分可视化层...")
 
-    # 层切分（复用旧逻辑）
     import json
-    from _collections import deque as _deq
 
-    layers_vis, layer_types = [], []
-    cur_seg, cur_type = [], "fiber"
+    # 层切分 — 与 server.py combined 策略一致
     jump_thresh = radius * 0.5
+    all_segs, layer_types = [], []
+    current_path = [pts_3d[0]]
+    in_fiber_phase = False
+    current_type = "fill"
 
-    for i, (x, y3, z3, a_deg) in enumerate(pts_3d):
-        if i == 0:
-            cur_seg.append([x, y3, z3]); continue
-        px, py, pz = pts_3d[i-1][:3]
-        d3 = math.sqrt((x-px)**2 + (y3-py)**2 + (z3-pz)**2)
-        dx = abs(x - px)
-        new_layer = (dx > layer_height * 0.6) or (d3 > jump_thresh)
-        if new_layer and len(cur_seg) >= 2:
-            # guess type by A-angle variance
-            a_vals = [pts_3d[j][3] for j in range(max(0,i-len(cur_seg)), i)]
-            t = "fill" if (max(a_vals)-min(a_vals) < 5) else "fiber"
-            layers_vis.append(cur_seg); layer_types.append(t)
-            cur_seg = []
-        cur_seg.append([x, y3, z3])
-    if len(cur_seg) >= 2:
-        layers_vis.append(cur_seg); layer_types.append("fiber")
+    for i in range(1, len(pts_3d)):
+        p0, p1 = pts_3d[i-1], pts_3d[i]
+        dx = abs(p1[2] - p0[2])   # z = x_axis
+        d3 = math.sqrt(sum((p1[k]-p0[k])**2 for k in range(3)))
+        if in_fiber_phase:
+            new_layer = d3 > jump_thresh
+        else:
+            new_layer = (dx > layer_height * 0.6) or (d3 > jump_thresh)
+        if new_layer:
+            if len(current_path) >= 2:
+                all_segs.append(current_path)
+                layer_types.append(current_type)
+            if not in_fiber_phase and current_type == "fill":
+                a_prev = waypoints[i-1][3]
+                a_cur  = waypoints[i][3]
+                if abs(a_cur - a_prev) > 10 or (i > len(waypoints) * 0.4 and current_type == "fill"):
+                    in_fiber_phase = True
+            current_type = "fiber" if in_fiber_phase else "fill"
+            current_path = []
+        current_path.append(p1)
+    if len(current_path) >= 2:
+        all_segs.append(current_path)
+        layer_types.append(current_type)
+
+    # 可视化预算采样（最多 1342 段，与旧版一致）
+    MAX_VIS = 1342
+    MAX_PTS = 200
+    fill_idx  = [i for i,t in enumerate(layer_types) if t == "fill"]
+    fiber_idx = [i for i,t in enumerate(layer_types) if t == "fiber"]
+    fill_budget  = MAX_VIS * 2 // 3
+    fiber_budget = MAX_VIS - fill_budget
+
+    layers_vis, layer_types_vis = [], []
+    fill_step  = max(1, len(fill_idx)  // fill_budget)
+    fiber_step = max(1, len(fiber_idx) // fiber_budget)
+    for idx in fill_idx[::fill_step]:
+        p = all_segs[idx]
+        layers_vis.append(p[::max(1, len(p)//MAX_PTS)])
+        layer_types_vis.append("fill")
+    for idx in fiber_idx[::fiber_step]:
+        p = all_segs[idx]
+        layers_vis.append(p[::max(1, len(p)//MAX_PTS)])
+        layer_types_vis.append("fiber")
 
     if progress_cb:
         progress_cb("plan_write", 85, f"写 live_layers.json ({len(layers_vis)} 层)...")
 
-    # live_paths.json（原始waypoints for G-code）
+    # live_paths.json（原始 waypoints，供 G-code 使用）
     wps_path = os.path.join(DATA_DIR, "live_paths.json")
     with open(wps_path, "w") as f:
-        json.dump({"waypoints": waypoints}, f)
+        json.dump({"waypoints": [list(w) for w in waypoints]}, f)
 
-    # live_layers.json（可视化层切片）
+    # live_layers.json — 格式与 server.py 完全一致，index.html 直接读取
     layers_path = os.path.join(DATA_DIR, "live_layers.json")
-    vis_data = [{"points": seg, "type": t}
-                for seg, t in zip(layers_vis, layer_types)]
     with open(layers_path, "w") as f:
-        json.dump(vis_data, f)
+        json.dump({
+            "n_layers":    len(layers_vis),
+            "strategy":    strategy,
+            "layer_types": layer_types_vis,
+            "layers":      layers_vis,
+        }, f)
 
     # 保存 waypoints 到 job_state（通过路径传递，避免跨线程大对象）
     wp_arr = np.array(waypoints, dtype=np.float32)
