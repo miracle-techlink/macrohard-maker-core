@@ -121,8 +121,9 @@ def run_plan(params: dict, job_state, progress_cb=None) -> dict:
     ext_width       = float(params.get("extrusion_width", 0.4))
     r_inner         = float(params.get("r_inner", 0.0))
     a_offset_z      = float(params.get("a_offset_z", 50.0))
+    use_stress      = bool(params.get("use_stress_field", False))
 
-    logger.info(f"[plan] strategy={strategy} angle={angle} n_layers={n_layers} r_inner={r_inner}")
+    logger.info(f"[plan] strategy={strategy} use_stress={use_stress} angle={angle} n_layers={n_layers}")
     if progress_cb:
         progress_cb("plan_init", 5, "初始化规划器...")
 
@@ -135,22 +136,76 @@ def run_plan(params: dict, job_state, progress_cb=None) -> dict:
     logger.info(f"[plan] geometry: radius={radius:.1f} length={length:.1f}")
 
     if progress_cb:
-        progress_cb("plan_paths", 15, f"combined_print_paths r={radius:.1f} l={length:.1f}...")
+        progress_cb("plan_paths", 15, f"生成路径 r={radius:.1f} l={length:.1f}...")
 
     planner = XYAPathPlanner(a_offset_y=0.0, a_offset_z=a_offset_z)
     t0 = time.time()
+
+    # ── 基体填充路径 ────────────────────────────────────────────────────────
     fill_wps = planner.layer_rectilinear_paths(
         radius=radius, length=length, r_inner=r_inner,
         layer_height=layer_height, extrusion_width=ext_width,
         n_walls=n_walls, infill_density=infill_density,
     )
-    cf_wps = planner.constant_angle_winding(
-        radius=radius, length=length,
-        angle_deg=angle, n_layers=n_layers,
-        fiber_width=ext_width,
-    )
+
+    # ── CF 缠绕路径：定角 或 应力驱动变角 ───────────────────────────────────
+    beta_stats = {}
+    if use_stress:
+        stress_json_path = os.path.join(DATA_DIR, "live_stress.json")
+        if os.path.exists(stress_json_path):
+            import json as _j
+            with open(stress_json_path) as f:
+                sdata = _j.load(f)
+            ctr  = np.array(sdata["centroids"])     # (N,3) 表面三角形质心，3D网格坐标
+            dirs = np.array(sdata["sigma_1_dir"])   # (N,3) 主应力方向单位向量
+
+            # 网格坐标系：Z = 轴向，XY = 径向
+            x_pos = ctr[:, 2]                               # 轴向位置
+            axial  = np.abs(dirs[:, 2])                     # 轴向分量
+            circ   = np.sqrt(dirs[:, 0]**2 + dirs[:, 1]**2) # 环向分量
+            circ   = np.maximum(circ, 1e-6)
+            beta   = np.degrees(np.arctan2(axial, circ))   # β*(x) in [0°,90°]
+            beta   = np.clip(beta, 5.0, 85.0)
+
+            # 按轴向位置排序 + 高斯平滑（满足曲率约束 §4.2）
+            sort_idx = np.argsort(x_pos)
+            x_s, b_s = x_pos[sort_idx], beta[sort_idx]
+            x_u, ux_idx = np.unique(x_s, return_index=True)
+            b_u = b_s[ux_idx]
+            from scipy.ndimage import gaussian_filter1d
+            b_smooth = gaussian_filter1d(b_u, sigma=max(1, len(b_u) // 20))
+            b_smooth = np.clip(b_smooth, 5.0, 85.0)
+
+            angle_func = lambda x, _layer: float(np.interp(x, x_u, b_smooth))
+            cf_wps = planner.variable_angle_winding(
+                radius=radius, length=length,
+                angle_func=angle_func, n_layers=n_layers,
+            )
+            beta_stats = {
+                "beta_min":  round(float(b_smooth.min()), 1),
+                "beta_max":  round(float(b_smooth.max()), 1),
+                "beta_mean": round(float(b_smooth.mean()), 1),
+            }
+            logger.info(f"[plan] stress-aligned winding β=[{beta_stats['beta_min']}°,"
+                        f"{beta_stats['beta_max']}°] mean={beta_stats['beta_mean']}°")
+            if progress_cb:
+                progress_cb("plan_paths", 40,
+                            f"应力驱动缠绕 β∈[{beta_stats['beta_min']}°,"
+                            f"{beta_stats['beta_max']}°]")
+        else:
+            logger.warning("[plan] use_stress_field=True 但 live_stress.json 不存在，回退到定角缠绕")
+            use_stress = False
+            cf_wps = planner.constant_angle_winding(
+                radius=radius, length=length,
+                angle_deg=angle, n_layers=n_layers, fiber_width=ext_width)
+
+    if not use_stress:
+        cf_wps = planner.constant_angle_winding(
+            radius=radius, length=length,
+            angle_deg=angle, n_layers=n_layers, fiber_width=ext_width)
+
     n_fill_wps = len(fill_wps)
-    waypoints = fill_wps + cf_wps
+    waypoints  = fill_wps + cf_wps
     t_plan = time.time() - t0
 
     logger.info(f"[plan] paths done: fill={n_fill_wps} cf={len(cf_wps)} total={len(waypoints)} in {t_plan:.2f}s")
@@ -268,21 +323,23 @@ def run_plan(params: dict, job_state, progress_cb=None) -> dict:
         progress_cb("plan_done", 100, f"完成 {elapsed:.2f}s  {len(waypoints)} 路径点  Vf={fill_vf*100:.1f}%")
 
     return {
-        "status":           "ok",
-        "n_waypoints":      len(waypoints),
-        "n_vis_layers":     len(layers_vis),
-        "fill_vis_layers":  fill_count,
-        "fiber_vis_layers": fiber_count,
-        "radius":           round(radius, 2),
-        "length":           round(length, 2),
-        "r_inner":          r_inner,
-        "strategy":         strategy,
-        "angle":            angle,
-        "n_layers":         n_layers,
-        "total_length_mm":  round(total_len, 1),
-        "plan_elapsed_s":   round(elapsed, 2),
-        "fill_vf":          round(fill_vf, 4),
-        "fill_vf_pct":      round(fill_vf * 100, 1),
+        "status":             "ok",
+        "n_waypoints":        len(waypoints),
+        "n_vis_layers":       len(layers_vis),
+        "fill_vis_layers":    fill_count,
+        "fiber_vis_layers":   fiber_count,
+        "radius":             round(radius, 2),
+        "length":             round(length, 2),
+        "r_inner":            r_inner,
+        "strategy":           strategy,
+        "use_stress_field":   use_stress,
+        "angle":              angle,
+        "n_layers":           n_layers,
+        "total_length_mm":    round(total_len, 1),
+        "plan_elapsed_s":     round(elapsed, 2),
+        "fill_vf":            round(fill_vf, 4),
+        "fill_vf_pct":        round(fill_vf * 100, 1),
+        **beta_stats,
     }
 
 
@@ -293,47 +350,91 @@ def run_gcode(params: dict, job_state, progress_cb=None) -> dict:
     if not job_state.waypoints_path or not os.path.exists(job_state.waypoints_path):
         raise RuntimeError("No waypoints. Submit a plan job first.")
 
-    logger.info(f"[gcode] feed={params.get('feed_rate',3000)} layer_h={params.get('layer_height',0.18)}")
+    feed_rate    = float(params.get("feed_rate", 3000.0))
+    layer_height = float(params.get("layer_height", 0.18))
+    ext_width    = float(params.get("extrusion_width", 0.4))
+    z_comp       = bool(params.get("z_comp_enable", False))
+    a_offset_r   = float(params.get("a_offset_r", 0.0))   # 偏心量 mm
+    gcode_r      = float(params.get("radius", 25.0))       # Z补偿用工件半径
+    speed_mode   = params.get("speed_mode", "adaptive")    # "uniform" | "adaptive"
+    nozzle_temp  = int(params.get("nozzle_temp", 240))
+    bed_temp     = int(params.get("bed_temp", 80))
+
+    logger.info(f"[gcode] feed={feed_rate} z_comp={z_comp} a_offset_r={a_offset_r} "
+                f"speed_mode={speed_mode}")
     if progress_cb:
         progress_cb("gcode_load", 5, "加载路径点...")
 
     data = np.load(job_state.waypoints_path)
     waypoints = data["waypoints"].tolist()
 
-    feed_rate    = float(params.get("feed_rate", 3000.0))
-    layer_height = float(params.get("layer_height", 0.18))
-    ext_width    = float(params.get("extrusion_width", 0.4))
-    travel_rate  = feed_rate * 2
-    filament_r   = 0.875
-    e_per_mm     = ext_width * layer_height / (math.pi * filament_r ** 2)
+    travel_rate = feed_rate * 2
+    filament_r  = 0.875
+    e_per_mm    = ext_width * layer_height / (math.pi * filament_r ** 2)
 
     if progress_cb:
-        progress_cb("gcode_gen", 10, f"生成 G-code n={len(waypoints)}...")
+        progress_cb("gcode_gen", 10, f"生成 G-code n={len(waypoints)} z_comp={z_comp}...")
 
     t0  = time.time()
     buf = [
-        "; CF-Path-Planner XYZA G-code",
-        f"; waypoints={len(waypoints)}  feed={feed_rate}mm/min",
+        "; MacroHard Maker — XYZA G-code",
+        f"; waypoints={len(waypoints)}  feed={feed_rate:.0f}mm/min"
+        f"  z_comp={z_comp}  speed_mode={speed_mode}",
         "G28 ; home all",
         "G92 E0",
-        f"M104 S240 ; nozzle temp",
-        f"M140 S80  ; bed temp",
-        "M109 S240",
-        "M190 S80",
+        f"M104 S{nozzle_temp} ; nozzle temp",
+        f"M140 S{bed_temp}  ; bed temp",
+        f"M109 S{nozzle_temp}",
+        f"M190 S{bed_temp}",
         f"G1 F{travel_rate:.0f}",
     ]
     E = 0.0
     prev_x = prev_y = prev_z = None
+    prev_a = None
+
     for wp in waypoints:
         x, y, z, a = wp
+
+        # ── Z 轴补偿 §4.6 ──────────────────────────────────────────────────
+        # ΔZ(α) = R·(1−cosα) + Δr·sinα  （α 为瞬时角度，非累计值）
+        if z_comp:
+            a_inst = math.radians(a % 360)
+            dz_comp = gcode_r * (1.0 - math.cos(a_inst)) + a_offset_r * math.sin(a_inst)
+            z_out = z + dz_comp
+        else:
+            z_out = z
+
+        # ── 速度协调 §4.5 ──────────────────────────────────────────────────
+        # 对于螺旋路径：v_total = sqrt(v_x² + (R·ω_A)²)
+        # adaptive 模式：F 值反映合成表面速度（让固件均匀沉积）
+        if speed_mode == "adaptive" and prev_x is not None and prev_a is not None:
+            dx = x - prev_x
+            da_rad = abs(a - prev_a) * math.pi / 180.0
+            arc_len = math.sqrt(dx*dx + (gcode_r * da_rad)**2)
+            if arc_len > 1e-6:
+                # v_axial / v_total = cosβ → F_actual = feed_rate (合成速度已是用户期望值)
+                # 但需将 F 换算到 XYZ mm/min（Klipper 以 X 线速度为基准）
+                # 只在缠绕段（有 A 轴运动）做修正，填充段 arc_len ≈ dx
+                cos_beta = abs(dx) / arc_len if arc_len > 1e-9 else 1.0
+                cos_beta = max(cos_beta, 0.1)   # 防止除零，β < 84°
+                f_adjusted = feed_rate * cos_beta  # X轴分速度 = F·cosβ → G-code F以X为参考
+            else:
+                f_adjusted = feed_rate
+        else:
+            f_adjusted = feed_rate
+
         if prev_x is None:
-            buf.append(f"G1 X{x:.3f} Y{y:.3f} Z{z:.3f} A{a:.2f} E0.0000 F{feed_rate:.0f}")
+            buf.append(f"G1 X{x:.3f} Y{y:.3f} Z{z_out:.3f} A{a:.2f}"
+                       f" E0.0000 F{feed_rate:.0f}")
         else:
             dx = x - prev_x; dy = y - prev_y; dz = z - prev_z
             dist = math.sqrt(dx*dx + dy*dy + dz*dz)
             E += dist * e_per_mm
-            buf.append(f"G1 X{x:.3f} Y{y:.3f} Z{z:.3f} A{a:.2f} E{E:.4f}")
+            buf.append(f"G1 X{x:.3f} Y{y:.3f} Z{z_out:.3f} A{a:.2f}"
+                       f" E{E:.4f} F{f_adjusted:.0f}")
         prev_x, prev_y, prev_z = x, y, z
+        prev_a = a
+
     buf += ["M104 S0 ; cool down", "M140 S0"]
     gcode_str = "\n".join(buf)
 
@@ -358,15 +459,17 @@ def run_gcode(params: dict, job_state, progress_cb=None) -> dict:
         progress_cb("gcode_done", 100, f"完成 {elapsed_gc:.2f}s")
 
     return {
-        "status":      "ok",
-        "axis_system": "xyza",
-        "n_lines":     gcode_str.count("\n"),
-        "n_waypoints": len(waypoints),
-        "fiber_mm":    round(fiber_mm, 1),
-        "a_min":       round(float(a_vals.min()), 1) if len(a_vals) else 0.0,
-        "a_max":       round(float(a_vals.max()), 1) if len(a_vals) else 0.0,
-        "file":        "/data/output.gcode",
-        "elapsed_s":   round(elapsed_gc, 2),
+        "status":        "ok",
+        "axis_system":   "xyza",
+        "n_lines":       gcode_str.count("\n"),
+        "n_waypoints":   len(waypoints),
+        "fiber_mm":      round(fiber_mm, 1),
+        "a_min":         round(float(a_vals.min()), 1) if len(a_vals) else 0.0,
+        "a_max":         round(float(a_vals.max()), 1) if len(a_vals) else 0.0,
+        "z_comp":        z_comp,
+        "speed_mode":    speed_mode,
+        "file":          "/data/output.gcode",
+        "elapsed_s":     round(elapsed_gc, 2),
     }
 
 

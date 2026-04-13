@@ -347,6 +347,20 @@ body {
 }
 .rp-more-link:hover { text-decoration: underline; }
 
+/* Strategy toggle buttons */
+.rp-strategy-btn {
+  flex: 1; padding: 5px 0; font-size: 12px; font-weight: 500;
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  background: var(--surface); color: var(--text-secondary); cursor: pointer;
+  transition: all .15s;
+}
+.rp-strategy-btn.active {
+  background: var(--blue); border-color: var(--blue); color: #fff; font-weight: 700;
+}
+.rp-strategy-btn:hover:not(.active) {
+  border-color: var(--blue); color: var(--blue);
+}
+
 /* Generate button */
 .rp-generate-wrap {
   position: absolute; bottom: 0; left: 0; right: 0;
@@ -947,20 +961,60 @@ body {
         </div>
       </div>
 
-      <!-- Print Parameters: rectilinear fill + CF winding -->
+      <!-- CF 缠绕参数 -->
       <div class="rp-section">
         <div class="rp-section-title">CF 缠绕参数</div>
-        <div class="rp-param-row">
-          <span class="rp-param-label">缠绕角</span>
-          <div class="rp-param-value" style="gap:6px;flex:1">
-            <input type="range" class="rp-param-slider" id="rp-angle-slider" min="5" max="85" value="45"
-              oninput="updateAngleSlider(this)" style="flex:1;min-width:60px">
-            <input type="number" class="rp-param-input" id="rp-angle-val" value="45" min="5" max="85"
-              oninput="updateAngleInput(this)" style="width:40px">
-            <span class="rp-param-unit">°</span>
+        <!-- 策略选择 -->
+        <div style="display:flex;gap:6px;margin-bottom:8px">
+          <button class="rp-strategy-btn active" id="btn-strategy-constant"
+            onclick="setStrategy('constant')">定角缠绕</button>
+          <button class="rp-strategy-btn" id="btn-strategy-stress"
+            onclick="setStrategy('stress')">应力优化</button>
+        </div>
+        <!-- 定角模式 -->
+        <div id="strategy-constant-params">
+          <div class="rp-param-row">
+            <span class="rp-param-label">缠绕角 β</span>
+            <div class="rp-param-value" style="gap:6px;flex:1">
+              <input type="range" class="rp-param-slider" id="rp-angle-slider" min="5" max="85" value="45"
+                oninput="updateAngleSlider(this)" style="flex:1;min-width:60px">
+              <input type="number" class="rp-param-input" id="rp-angle-val" value="45" min="5" max="85"
+                oninput="updateAngleInput(this)" style="width:40px">
+              <span class="rp-param-unit">°</span>
+            </div>
           </div>
         </div>
-        <div class="rp-param-row">
+        <!-- 应力优化模式 -->
+        <div id="strategy-stress-params" style="display:none">
+          <div style="font-size:11px;color:var(--text-hint);margin-bottom:6px;line-height:1.5">
+            运行 FEA → 提取主应力方向 → β*(x) = arctan(√(σ_θ/σ_x))
+          </div>
+          <div class="rp-param-row">
+            <span class="rp-param-label">弹性模量 E</span>
+            <div class="rp-param-value">
+              <input type="number" class="rp-param-input" id="rp-fea-E" value="60" min="1" max="500"
+                style="width:52px">
+              <span class="rp-param-unit">GPa</span>
+            </div>
+          </div>
+          <div class="rp-param-row">
+            <span class="rp-param-label">泊松比 ν</span>
+            <div class="rp-param-value">
+              <input type="number" class="rp-param-input" id="rp-fea-nu" value="0.3"
+                min="0.01" max="0.49" step="0.01" style="width:52px">
+            </div>
+          </div>
+          <div class="rp-param-row">
+            <span class="rp-param-label">轴向载荷 P</span>
+            <div class="rp-param-value">
+              <input type="number" class="rp-param-input" id="rp-fea-P" value="500"
+                min="1" max="100000" style="width:60px">
+              <span class="rp-param-unit">N</span>
+            </div>
+          </div>
+          <div id="fea-result-hint" style="font-size:11px;color:var(--green,#22c55e);display:none;margin-top:4px"></div>
+        </div>
+        <div class="rp-param-row" style="margin-top:6px">
           <span class="rp-param-label">CF 层数</span>
           <div class="rp-param-value">
             <button class="rp-stepper-btn" onclick="stepperAdj('rp-n-layers',-1)">−</button>
@@ -971,6 +1025,7 @@ body {
         </div>
       </div>
 
+      <!-- 基体填充参数 -->
       <div class="rp-section">
         <div class="rp-section-title">基体填充参数</div>
         <div class="rp-param-row">
@@ -1002,39 +1057,87 @@ body {
         </div>
       </div>
 
-      <!-- Speed -->
+      <!-- 打印速度 -->
       <div class="rp-section">
         <div class="rp-section-title">打印速度</div>
-        <div class="rp-slider-group">
-          <span class="rp-slider-label">慢</span>
-          <input type="range" class="rp-slider" id="rp-speed-slider" min="0" max="100" value="50"
-            oninput="updateSpeedSlider(this)">
-          <span class="rp-slider-label">快</span>
-        </div>
-        <div class="rp-quality-label" id="rp-speed-val">打印速度: 40 mm/s</div>
-      </div>
-
-      <!-- Support -->
-      <div class="rp-section">
-        <div class="rp-section-title">支撑结构</div>
-        <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px">
-          <select class="rp-dropdown" id="rp-support" style="flex:1"
-            onchange="clearSupportPreview();document.getElementById('sb-support').textContent=this.options[this.selectedIndex].text">
-            <option value="none">无</option>
-            <option value="column">普通柱状</option>
-            <option value="tree">树状支撑</option>
-          </select>
-          <button class="rp-support-preview-btn" onclick="generateSupportPreview()">预览</button>
-        </div>
         <div class="rp-param-row">
-          <span class="rp-param-label">悬垂角</span>
+          <span class="rp-param-label">打印速度</span>
           <div class="rp-param-value">
-            <input type="number" class="rp-param-input" id="rp-overhang-angle" value="45" min="15" max="75"
-              style="width:40px" oninput="clearSupportPreview()">
-            <span class="rp-param-unit">°</span>
+            <input type="number" class="rp-param-input" id="rp-print-speed" value="40"
+              min="5" max="120" style="width:52px">
+            <span class="rp-param-unit">mm/s</span>
           </div>
         </div>
-        <div id="support-stats" style="font-size:11px;color:var(--text-hint);margin-top:4px;display:none"></div>
+        <div class="rp-param-row">
+          <span class="rp-param-label">空程速度</span>
+          <div class="rp-param-value">
+            <input type="number" class="rp-param-input" id="rp-travel-speed" value="80"
+              min="10" max="300" style="width:52px">
+            <span class="rp-param-unit">mm/s</span>
+          </div>
+        </div>
+        <label style="font-size:11px;color:var(--text-secondary);display:flex;align-items:center;gap:5px;cursor:pointer;margin-top:4px">
+          <input type="checkbox" id="rp-speed-adaptive" checked style="width:13px;height:13px">
+          速度协调 §4.5（合成表面速度）
+        </label>
+      </div>
+
+      <!-- 高级参数 -->
+      <div class="rp-section">
+        <div class="rp-section-title" style="cursor:pointer;user-select:none;display:flex;align-items:center"
+          onclick="toggleAdvanced()">
+          高级参数
+          <span id="adv-toggle-icon" style="font-size:10px;margin-left:auto;color:var(--text-hint)">▶</span>
+        </div>
+        <div id="adv-params" style="display:none">
+          <div class="rp-param-row" style="margin-top:6px">
+            <span class="rp-param-label">挤出宽度</span>
+            <div class="rp-param-value">
+              <input type="number" class="rp-param-input" id="rp-ext-width" value="0.4"
+                min="0.1" max="2.0" step="0.05" style="width:52px">
+              <span class="rp-param-unit">mm</span>
+            </div>
+          </div>
+          <div class="rp-param-row">
+            <span class="rp-param-label">A轴偏移 Z</span>
+            <div class="rp-param-value">
+              <input type="number" class="rp-param-input" id="rp-a-offset-z" value="50"
+                min="0" max="200" style="width:52px">
+              <span class="rp-param-unit">mm</span>
+            </div>
+          </div>
+          <label style="font-size:11px;color:var(--text-secondary);display:flex;align-items:center;gap:5px;cursor:pointer;margin-top:6px">
+            <input type="checkbox" id="rp-z-comp" style="width:13px;height:13px"
+              onchange="toggleZComp(this.checked)">
+            Z轴补偿 ΔZ(α)（§4.6）
+          </label>
+          <div id="z-comp-params" style="display:none;margin-top:4px">
+            <div class="rp-param-row">
+              <span class="rp-param-label">偏心量 Δr</span>
+              <div class="rp-param-value">
+                <input type="number" class="rp-param-input" id="rp-a-offset-r" value="0"
+                  min="0" max="10" step="0.1" style="width:52px">
+                <span class="rp-param-unit">mm</span>
+              </div>
+            </div>
+          </div>
+          <div class="rp-param-row" style="margin-top:6px">
+            <span class="rp-param-label">喷头温度</span>
+            <div class="rp-param-value">
+              <input type="number" class="rp-param-input" id="rp-nozzle-temp" value="240"
+                min="150" max="450" style="width:52px">
+              <span class="rp-param-unit">°C</span>
+            </div>
+          </div>
+          <div class="rp-param-row">
+            <span class="rp-param-label">热床温度</span>
+            <div class="rp-param-value">
+              <input type="number" class="rp-param-input" id="rp-bed-temp" value="80"
+                min="0" max="150" style="width:52px">
+              <span class="rp-param-unit">°C</span>
+            </div>
+          </div>
+        </div>
       </div>
 
       <a class="rp-more-link" href="#" onclick="event.preventDefault();openPrintSettings()">更多设置...</a>
@@ -1717,10 +1820,11 @@ const appState = {
   layerHeight: 0.18,
   infillDensity: 20,
   gcodeGenerated: false,
-  serverMeshReady: false,   // true once /api/mesh, /api/load_builtin, or /api/upload_stl succeeds
+  serverMeshReady: false,
   geomRadius: 25,
   geomLength: 50,
   geomRInner: 0,
+  cfStrategy: 'constant',   // 'constant' | 'stress'
 };
 
 // ============================
@@ -2040,6 +2144,36 @@ function updateQualitySlider(el) {
 function updateLayerHeight(val) {
   appState.layerHeight = parseFloat(val) || 0.18;
   document.getElementById('sb-layer').textContent = val + 'mm';
+}
+
+// ── 缠绕策略切换 ──────────────────────────────────────────────────────────
+function setStrategy(mode) {
+  appState.cfStrategy = mode;
+  appState.serverMeshReady = false; // mesh state stale when strategy changes
+
+  document.getElementById('btn-strategy-constant').classList.toggle('active', mode === 'constant');
+  document.getElementById('btn-strategy-stress').classList.toggle('active', mode === 'stress');
+  document.getElementById('strategy-constant-params').style.display = mode === 'constant' ? '' : 'none';
+  document.getElementById('strategy-stress-params').style.display   = mode === 'stress'   ? '' : 'none';
+
+  if (mode !== 'stress') {
+    const hint = document.getElementById('fea-result-hint');
+    if (hint) { hint.style.display = 'none'; hint.textContent = ''; }
+  }
+}
+
+// ── 高级参数折叠 ──────────────────────────────────────────────────────────
+function toggleAdvanced() {
+  const p = document.getElementById('adv-params');
+  const ic = document.getElementById('adv-toggle-icon');
+  const open = p.style.display === 'none' || p.style.display === '';
+  p.style.display = open ? 'block' : 'none';
+  ic.textContent = open ? '▼' : '▶';
+}
+
+// ── Z补偿参数显示 ─────────────────────────────────────────────────────────
+function toggleZComp(checked) {
+  document.getElementById('z-comp-params').style.display = checked ? 'block' : 'none';
 }
 
 function updateInfill(val) {
@@ -2897,13 +3031,26 @@ async function generateGcode() {
     text.textContent = msg;
   };
 
-  const strategy = 'combined';   // single unified algorithm
-  const angle    = parseFloat(document.getElementById('rp-angle-val').value) || 45;
-  const n_layers = parseInt(document.getElementById('rp-n-layers').value) || 4;
-  const n_walls  = parseInt(document.getElementById('rp-n-walls').value) || 2;
+  // ── 读取所有 UI 参数 ──────────────────────────────────────────────────
+  const useStress  = (appState.cfStrategy === 'stress');
+  const angle      = parseFloat(document.getElementById('rp-angle-val').value) || 45;
+  const n_layers   = parseInt(document.getElementById('rp-n-layers').value) || 4;
+  const n_walls    = parseInt(document.getElementById('rp-n-walls').value) || 2;
   const infill_density = (parseFloat(document.getElementById('rp-infill-val').value) || 25) / 100;
-  const speedPct = parseInt(document.getElementById('rp-speed-slider').value);
-  const feedRate = Math.round((20 + speedPct / 100 * 60) * 60);
+  const printSpeed = parseFloat(document.getElementById('rp-print-speed').value) || 40;
+  const travelSpeed = parseFloat(document.getElementById('rp-travel-speed').value) || 80;
+  const feedRate   = Math.round(printSpeed * 60);
+  const travelRate = Math.round(travelSpeed * 60);
+  const extWidth   = parseFloat(document.getElementById('rp-ext-width').value) || 0.4;
+  const aOffsetZ   = parseFloat(document.getElementById('rp-a-offset-z').value) || 50;
+  const zComp      = document.getElementById('rp-z-comp').checked;
+  const aOffsetR   = parseFloat(document.getElementById('rp-a-offset-r').value) || 0;
+  const speedAdaptive = document.getElementById('rp-speed-adaptive').checked;
+  const nozzleTemp = parseInt(document.getElementById('rp-nozzle-temp').value) || 240;
+  const bedTemp    = parseInt(document.getElementById('rp-bed-temp').value) || 80;
+  const feaE       = parseFloat(document.getElementById('rp-fea-E').value) || 60;
+  const feaNu      = parseFloat(document.getElementById('rp-fea-nu').value) || 0.3;
+  const feaP       = parseFloat(document.getElementById('rp-fea-P').value) || 500;
   const geomRadius = appState.geomRadius || 25;
   const geomLength = appState.geomLength || 50;
   const geomRInner = appState.geomRInner || 0;
@@ -2911,9 +3058,9 @@ async function generateGcode() {
   try {
     setServerOnline(true);
 
-    // Step 1: ensure server has a mesh
+    // Step 1: mesh
     if (!appState.serverMeshReady) {
-      setProgress(15, '生成圆柱网格...');
+      setProgress(10, '生成网格...');
       const meshResult = await callApi('/api/mesh', {
         model: 'cylinder',
         r_outer: geomRadius, r_inner: geomRInner,
@@ -2922,76 +3069,85 @@ async function generateGcode() {
       if (meshResult.error) throw new Error('网格: ' + meshResult.error);
       appState.serverMeshReady = true;
     }
-    setProgress(25, '网格就绪');
+    setProgress(20, '网格就绪');
 
-    // Step 2: FEA (only for stress strategy)
-    if (strategy === 'stress') {
-      setProgress(35, '运行有限元分析...');
-      const feaResult = await callApi('/api/fea', { E_gpa: 70, nu: 0.3, P: 500 });
+    // Step 2: FEA（应力优化模式）
+    let feaResult = null;
+    if (useStress) {
+      setProgress(30, `运行 FEA (E=${feaE}GPa ν=${feaNu} P=${feaP}N)...`);
+      feaResult = await callApi('/api/fea', { E_gpa: feaE, nu: feaNu, P: feaP });
       if (feaResult.error) throw new Error('FEA: ' + feaResult.error);
-      setProgress(55, 'FEA完成 σ_max=' + (feaResult.max_von_mises || 0).toFixed(0) + ' MPa');
+      const sigMax = (feaResult.max_von_mises || 0).toFixed(0);
+      setProgress(50, `FEA 完成  σ_max=${sigMax} MPa  正在映射缠绕角...`);
+      const hint = document.getElementById('fea-result-hint');
+      hint.textContent = `✓ σ_max=${sigMax} MPa  最大位移=${(feaResult.max_displacement||0).toFixed(4)}mm`;
+      hint.style.display = 'block';
     }
 
-    // Step 3: winding/fill paths
-    setProgress(60, strategy === 'fill' ? '计算整体填充路径...' :
-                    strategy === 'combined' ? '计算填充+CF缠绕路径...' :
-                    '计算XY+A缠绕路径...');
+    // Step 3: 路径规划
+    setProgress(55, useStress ? '应力驱动变角度缠绕...' : '填充 + CF 定角缠绕...');
     const pathResult = await callApi('/api/xyza_paths', {
-      strategy, angle, n_layers, a_offset_z: 50.0,
-      radius: geomRadius, length: geomLength,
-      r_inner: geomRInner,
+      strategy: 'combined',
+      use_stress_field: useStress,
+      angle, n_layers,
+      a_offset_z: aOffsetZ,
+      radius: geomRadius, length: geomLength, r_inner: geomRInner,
       layer_height: appState.layerHeight,
-      extrusion_width: 0.4, n_walls, infill_density
+      extrusion_width: extWidth, n_walls, infill_density,
     });
     if (pathResult.error) throw new Error('路径: ' + pathResult.error);
-    setProgress(82, '路径生成完成: ' + pathResult.n_waypoints + ' 点');
+
+    const nVis = pathResult.n_vis_layers || n_layers * 4;
+    const betaInfo = pathResult.use_stress_field && pathResult.beta_min != null
+      ? ` β=[${pathResult.beta_min}°,${pathResult.beta_max}°]` : '';
+    setProgress(82, `路径完成: ${pathResult.n_waypoints} 点${betaInfo}`);
 
     // Step 4: G-code
-    setProgress(90, '生成 G-code...');
+    setProgress(90, `生成 G-code  z_comp=${zComp}  speed=${speedAdaptive?'adaptive':'uniform'}...`);
     const gcodeResult = await callApi('/api/gcode', {
-      feed_rate: feedRate, a_offset_z: 50.0,
-      layer_height: appState.layerHeight, extrusion_width: 0.4
+      feed_rate:    feedRate,
+      travel_rate:  travelRate,
+      layer_height: appState.layerHeight,
+      extrusion_width: extWidth,
+      radius:       geomRadius,
+      z_comp_enable: zComp,
+      a_offset_r:   aOffsetR,
+      speed_mode:   speedAdaptive ? 'adaptive' : 'uniform',
+      nozzle_temp:  nozzleTemp,
+      bed_temp:     bedTemp,
     });
     if (gcodeResult.error) throw new Error('G-code: ' + gcodeResult.error);
 
-    // Success
+    // 完成
     setProgress(100, '完成！');
     btn.textContent = '✓ G-code 已生成';
     btn.style.background = 'var(--green)';
     btn.classList.remove('loading');
     btn.disabled = false;
 
-    const nVis = pathResult.n_vis_layers || (n_layers * 4);
-
-    // Update cylinder mesh to match actual geometry from path result
-    const actualRadius = pathResult.radius || 25;
-    const actualLength = pathResult.length || 50;
-    updateCylinderMesh(actualRadius, actualLength);
-
+    updateCylinderMesh(pathResult.radius || 25, pathResult.length || 50);
     showLayerPreview(nVis);
     await loadAndRenderPaths(nVis);
+    setView('3d');
 
-    // For fill/combined: look down the cylinder axis to see concentric rings
-    if (strategy === 'fill' || strategy === 'combined') {
-      setView('top');
-    } else {
-      setView('3d');
-    }
-
+    // 状态栏
     document.getElementById('sb-fiber-info').textContent =
       '路径: ' + pathResult.n_waypoints + ' 点 · ' +
-      (pathResult.total_length_mm || 0).toFixed(0) + ' mm · ' + nVis + ' 层';
-    showToast('G-code 已生成 (' + gcodeResult.n_lines + ' 行)');
+      ((pathResult.total_length_mm || 0) / 1000).toFixed(2) + ' m · ' + nVis + ' 层' + betaInfo;
+    showToast('G-code 已生成 (' + gcodeResult.n_lines + ' 行) · ' +
+              (gcodeResult.elapsed_s || 0).toFixed(2) + 's');
     appState.gcodeGenerated = true;
 
-    // Update result card
+    // 结果卡片
     const vfPct = pathResult.fill_vf_pct || 0;
-    const fillVol = pathResult.fill_volume_mm3 || 0;
-    const cylVol = pathResult.cyl_volume_mm3 || 0;
     document.getElementById('res-fill-vf').textContent = vfPct.toFixed(1) + '%';
     document.getElementById('res-fill-vf').className = 'rp-result-val' + (vfPct >= 20 ? ' good' : '');
-    document.getElementById('res-fill-vol').textContent = (fillVol / 1000).toFixed(1) + ' cm³';
-    document.getElementById('res-total-len').textContent = ((pathResult.total_length_mm || 0) / 1000).toFixed(2) + ' m';
+    document.getElementById('res-fill-vol').textContent =
+      pathResult.use_stress_field
+        ? `β ${pathResult.beta_min||'?'}°–${pathResult.beta_max||'?'}°`
+        : ((pathResult.fill_vf || 0) * Math.PI * geomRadius * geomRadius * geomLength / 1000).toFixed(1) + ' cm³';
+    document.getElementById('res-total-len').textContent =
+      ((pathResult.total_length_mm || 0) / 1000).toFixed(2) + ' m';
     document.getElementById('res-fill-layers').textContent =
       (pathResult.fill_vis_layers || 0) + ' fill · ' + (pathResult.fiber_vis_layers || 0) + ' CF';
     document.getElementById('rp-result-card').classList.add('visible');
