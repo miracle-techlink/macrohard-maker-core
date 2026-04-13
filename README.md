@@ -136,7 +136,7 @@ python tests/benchmark_webapp.py
 
 ## 桌面版
 
-提供 Electron 封装的桌面应用：[cf-path-planner-desktop](https://github.com/miracle-techlink/cf-path-planner-desktop)
+提供 Electron 封装的桌面应用：[macrohard-maker-desktop](https://github.com/miracle-techlink/macrohard-maker-desktop)
 
 ## License
 
