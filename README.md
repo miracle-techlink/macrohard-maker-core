@@ -1,4 +1,4 @@
-# CF-Path-Planner
+# MacroHard Maker — Core
 
 **应力驱动的连续碳纤维多轴3D打印路径规划工具**
 
