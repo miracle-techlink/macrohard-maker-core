@@ -100,9 +100,10 @@ def run_builtin_mesh(params: dict, job_state, progress_cb=None) -> dict:
 
 def run_plan(params: dict, job_state, progress_cb=None) -> dict:
     """XY+A 路径规划，写 live_layers.json，结果存入 job_state。"""
-    mesh_path = job_state.mesh_path
+    mesh_path = job_state.mesh_path or params.get("mesh_path")
     if not mesh_path or not os.path.exists(mesh_path):
         raise RuntimeError("No mesh available. Submit a mesh job first.")
+    job_state.mesh_path = mesh_path
 
     from cfpp.surface.planner_v2 import XYAPathPlanner
     from cfpp.surface.extract    import extract_surface
@@ -345,9 +346,10 @@ def run_gcode(params: dict, job_state, progress_cb=None) -> dict:
 
 def run_fea(params: dict, job_state, progress_cb=None) -> dict:
     """FEA 分析 — 直接移植旧 api_fea 逻辑。"""
-    mesh_path = job_state.mesh_path
+    mesh_path = job_state.mesh_path or params.get("mesh_path")
     if not mesh_path or not os.path.exists(mesh_path):
         raise RuntimeError("No mesh. Submit a mesh job first.")
+    job_state.mesh_path = mesh_path
 
     if progress_cb:
         progress_cb("fea_setup", 5, "初始化 FEA 求解器...")
@@ -453,9 +455,10 @@ def run_fea(params: dict, job_state, progress_cb=None) -> dict:
 
 def run_optimize(params: dict, job_state, progress_cb=None) -> dict:
     """打印方向优化 — 枚举多起点，最小化悬垂面积。"""
-    mesh_path = job_state.mesh_path
+    mesh_path = job_state.mesh_path or params.get("mesh_path")
     if not mesh_path or not os.path.exists(mesh_path):
         raise RuntimeError("No mesh. Submit a mesh job first.")
+    job_state.mesh_path = mesh_path
 
     n_starts = int(params.get("n_starts", 6))
     max_iter  = int(params.get("max_iter", 15))

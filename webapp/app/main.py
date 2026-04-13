@@ -68,6 +68,10 @@ app.include_router(system.router)
 # ── 旧 /api/* 兼容层（前端未迁移前继续可用）──────────────────────────────────
 # 通过 JobManager 提交，但立即轮询等待结果（阻塞语义，与旧接口一致）
 
+# 旧接口共享状态（模拟 server.py 的全局 state dict）
+_legacy_state = {"mesh_path": None, "waypoints_path": None}
+
+
 def _run_sync(fn, params: dict, job_type: str, parent_job_id: str | None = None) -> dict:
     """提交任务并同步等待结果，超时 120s。"""
     mgr = get_job_manager()
@@ -87,12 +91,16 @@ def _run_sync(fn, params: dict, job_type: str, parent_job_id: str | None = None)
 async def legacy_mesh(request: Request):
     body = await _parse_body(request)
     result = _run_sync(svc.run_mesh, body, "mesh")
+    if result.get("mesh_path"):
+        _legacy_state["mesh_path"] = result["mesh_path"]
     return JSONResponse(result)
 
 
 @app.post("/api/fea")
 async def legacy_fea(request: Request):
     body = await _parse_body(request)
+    if _legacy_state["mesh_path"]:
+        body.setdefault("mesh_path", _legacy_state["mesh_path"])
     result = _run_sync(svc.run_fea, body, "fea")
     return JSONResponse(result)
 
@@ -100,20 +108,33 @@ async def legacy_fea(request: Request):
 @app.post("/api/xyza_paths")
 async def legacy_plan(request: Request):
     body = await _parse_body(request)
+    if _legacy_state["mesh_path"]:
+        body.setdefault("mesh_path", _legacy_state["mesh_path"])
     result = _run_sync(svc.run_plan, body, "plan")
+    if result.get("status") == "ok":
+        # 保存最近一次 plan 的 job，供 /api/gcode 继承
+        mgr = get_job_manager()
+        recent = mgr.list_recent(5)
+        for j in reversed(recent):
+            if j["type"] == "plan" and j["status"] == "completed":
+                _legacy_state["_last_plan_job_id"] = j["id"]
+                break
     return JSONResponse(result)
 
 
 @app.post("/api/gcode")
 async def legacy_gcode(request: Request):
     body = await _parse_body(request)
-    result = _run_sync(svc.run_gcode, body, "gcode")
+    last_plan = _legacy_state.get("_last_plan_job_id")
+    result = _run_sync(svc.run_gcode, body, "gcode", parent_job_id=last_plan)
     return JSONResponse(result)
 
 
 @app.post("/api/optimize")
 async def legacy_optimize(request: Request):
     body = await _parse_body(request)
+    if _legacy_state["mesh_path"]:
+        body.setdefault("mesh_path", _legacy_state["mesh_path"])
     result = _run_sync(svc.run_optimize, body, "optimize")
     return JSONResponse(result)
 
