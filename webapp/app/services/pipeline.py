@@ -134,7 +134,7 @@ def run_plan(params: dict, job_state, progress_cb=None) -> dict:
     t0 = time.time()
     waypoints = planner.combined_print_paths(
         radius=radius, length=length, r_inner=r_inner,
-        angle_deg=angle, n_layers=n_layers, n_walls=n_walls,
+        winding_angle_deg=angle, n_cf_layers=n_layers, n_walls=n_walls,
         infill_density=infill_density,
         layer_height=layer_height, extrusion_width=ext_width,
     )
