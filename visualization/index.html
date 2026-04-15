@@ -1926,6 +1926,7 @@ function buildCylinder(radius, length) {
     transparent: true,
     opacity: 0.35,
     side: THREE.DoubleSide,
+    depthWrite: false,
   });
   cylinderMesh = new THREE.Mesh(geo, mat);
   cylinderMesh.position.y = h / 2;   // bottom at Y=0, top at Y=h
@@ -3327,9 +3328,32 @@ window.addEventListener('DOMContentLoaded', () => {
   loadModelLibrary();
   // Retry library load after server warms up
   setTimeout(loadModelLibrary, 3000);
+  // Auto-load last plan result if available
+  setTimeout(async () => {
+    try {
+      const r = await fetch('http://localhost:8765/data/live_layers.json', { cache: 'no-store' });
+      if (!r.ok) return;
+      allLayerData = await r.json();
+      const nLayers = allLayerData.n_layers || 0;
+      if (nLayers < 1) return;
+      // Infer geometry from path data: collect all pts across all layers
+      let maxR = 0, minY = Infinity, maxY = -Infinity;
+      for (const seg of allLayerData.layers) {
+        for (const pt of seg) {
+          const r2 = Math.sqrt(pt[0]*pt[0] + pt[2]*pt[2]);
+          if (r2 > maxR) maxR = r2;
+          if (pt[1] < minY) minY = pt[1];
+          if (pt[1] > maxY) maxY = pt[1];
+        }
+      }
+      const inferRadius = Math.ceil(maxR);
+      const inferLength = Math.ceil(maxY - minY) || 50;
+      updateCylinderMesh(inferRadius, inferLength);
+      renderLayerPaths(nLayers);
+    } catch (_) {}
+  }, 1000);
 
   // Init slider gradients
-  updateSpeedSlider(document.getElementById('rp-speed-slider'));
   updateAngleSlider(document.getElementById('rp-angle-slider'));
 
   // Bind layer height input event (already bound via oninput, backup)
